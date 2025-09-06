@@ -16,7 +16,6 @@ const {combine, timestamp, json, printf, colorize, align } = winston.format;
 
 if (!loggerGlobal){
     console.log('Creando el logger global del sistema ...');
-    console.log('Maximo nivel de log es: '+configurationProvider.maxLogLevel);
     loggerGlobal = winston.createLogger({
         levels: logLevels,
         level: configurationProvider.maxLogLevel || 'info',
