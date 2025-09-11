@@ -1,35 +1,35 @@
 export const validateSchema = (schema) => {
   return (req, res, next) => {
     try {
-      const dataToValidate = {
-        body: req.body,
-        params: req.params,
-        query: req.query,
-      }
-
-      const { error, value } = schema.validate(dataToValidate, {
+      console.log('Validando body:', req.body); // Debug
+      
+      // Solo validar el body directamente, no un objeto anidado
+      const { error, value } = schema.validate(req.body, {
         abortEarly: false,
-        allowUnknown: false,
-        stripUnknown: true,
-      })
+        allowUnknown: true,  // Permitir campos adicionales como 'file'
+        stripUnknown: false, // No eliminar campos desconocidos
+      });
 
       if (error) {
+        console.log('Errores encontrados:', error.details); // Debug
         return res.status(400).json({
           message: 'Error de validación',
           errors: error.details.map((err) => ({
             field: err.path.join('.'),
             message: err.message,
           })),
-        })
+        });
       }
 
-      req.validated = value
-      next()
+      // Actualizar el body con los valores validados
+      req.body = { ...req.body, ...value };
+      console.log('Validación exitosa:', req.body); // Debug
+      next();
     } catch (err) {
-      console.error('Error en validación:', err)
+      console.error('Error en validación:', err);
       return res.status(500).json({
         message: 'Error interno en validación',
-      })
+      });
     }
-  }
-}
+  };
+};

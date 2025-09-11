@@ -2,6 +2,7 @@ import pkg1 from 'body-parser'
 const { json, urlencoded } = pkg1
 import cors from 'cors'
 import { configurationProvider } from './src/config/configurationManager.js'
+import filesRouter from "./src/routes/files.routes.js"
 import { loggerGlobal } from './src/logging/loggerManager.js'
 import { app } from './app.js'
 import { exit } from 'node:process'
@@ -54,7 +55,7 @@ app.use((req, res, next) => {
 });
 
 // Rutas de upload
-/* app.use("/gestor/api", uploadFiles) */
+app.use("/gestor/api", filesRouter)
 
 // Iniciar el servidor Express
 try {
