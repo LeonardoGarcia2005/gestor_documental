@@ -1,7 +1,9 @@
+import { loggerGlobal } from "../logging/loggerManager.js";
+
 export const validateSchema = (schema) => {
   return (req, res, next) => {
     try {
-      console.log('Validando body:', req.body); // Debug
+      loggerGlobal.info('Validando body:', req.body); // Debug
       
       // Solo validar el body directamente, no un objeto anidado
       const { error, value } = schema.validate(req.body, {
@@ -23,10 +25,9 @@ export const validateSchema = (schema) => {
 
       // Actualizar el body con los valores validados
       req.body = { ...req.body, ...value };
-      console.log('Validación exitosa:', req.body); // Debug
       next();
     } catch (err) {
-      console.error('Error en validación:', err);
+      loggerGlobal.error('Error en validación:', err);
       return res.status(500).json({
         message: 'Error interno en validación',
       });

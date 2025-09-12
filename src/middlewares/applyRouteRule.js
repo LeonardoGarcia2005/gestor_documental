@@ -1,41 +1,40 @@
+import { routeRuleDAO } from "../dataAccessObjects/routeRuleDAO.js";
+
 export const applyRouteRule = async (req, res, next) => {
   try {
     const { securityContext } = req;
-    
+
     if (!securityContext) {
       return res.status(500).json({
-        error: 'Contexto de seguridad no establecido'
+        error: "Contexto de seguridad no establecido",
       });
     }
 
-    const { hasCompany, securityLevel } = securityContext;
-    const isPublic = securityLevel === 'public';
+    const { securityLevel, hasCompany } = securityContext;
+    const securityLevelParsed = securityLevel.toLowerCase();
 
-    // Determinar ID de regla de ruta basado en la matriz de casos
-    let routeRuleId;
-    
-    if (isPublic && hasCompany) {
-      routeRuleId = 1; // Públicos Con Empresa
-    } else if (isPublic && !hasCompany) {
-      routeRuleId = 2; // Públicos Sin Empresa  
-    } else if (!isPublic && hasCompany) {
-      routeRuleId = 3; // Privados Con Empresa
-    } else if (!isPublic && !hasCompany) {
-      routeRuleId = 4; // Privados Sin Empresa
+    // Consultar la base de datos para determinar qué plantilla de ruta le toca
+    const routePath = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+      securityLevelParsed,
+      hasCompany
+    );
+
+    if (!routePath) {
+      return res.status(404).json({
+        error: "No se encontró plantilla de ruta para el caso especificado",
+        details: { securityLevel: securityLevelParsed, hasCompany },
+      });
     }
 
     // Agregar información de ruta al request
-    req.routeRuleId = routeRuleId;
-    
-    // Log para debugging (opcional)
-    console.log(`Aplicando regla de ruta ${routeRuleId}: ${securityLevel} ${hasCompany ? 'con' : 'sin'} empresa`);
+    req.routePath = routePath;
 
     next();
-    
   } catch (error) {
     return res.status(500).json({
-      error: 'Error determinando regla de ruta',
-      details: error.message
+      error: "Error determinando regla de ruta",
+      details: error.message,
     });
   }
 };
+
