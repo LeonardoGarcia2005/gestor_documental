@@ -13,7 +13,14 @@ loggerGlobal.debug(`Tengo el puerto web: ${PUERTO_WEB}`)
 
 // Configuración de CORS para evitar problemas
 const corsOptions = {
-  origin: ['http://localhost:5173', 'https://pangeatech.com.uy:8888', 'https://www.pangeatech.com.uy:8888', 'https://agendateya.com.uy', 'https://agendateya.com.co', 'https://agendateya.com.ve'], // Origen permitido
+  origin: [
+    'http://localhost:5173', 
+    'https://pangeatech.com.uy:8888', 
+    'https://www.pangeatech.com.uy:8888', 
+    'https://agendateya.com.uy', 
+    'https://agendateya.com.co', 
+    'https://agendateya.com.ve'
+  ], // Origen permitido
   credentials: true, // Permitir credenciales
   allowedHeaders: ['sessionID', 'content-type', 'authorization'],
 }

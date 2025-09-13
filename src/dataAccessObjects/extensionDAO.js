@@ -30,7 +30,7 @@ const getAllExtensions = async () => {
   try {
     // Consulta parametrizada para evitar inyección SQL
     const queryExtension = `
-            SELECT name 
+            SELECT id, name 
             FROM extension 
             WHERE status = TRUE
         `;

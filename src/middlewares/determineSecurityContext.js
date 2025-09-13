@@ -27,8 +27,6 @@ export const determineSecurityContext = async (req, res, next) => {
     if (!hasCompany) {
       // Establecer contexto de seguridad sin empresa
       req.securityContext = {
-        hasCompany: false,
-        securityLevel: securityLevel,
         companyCode: null
       };
       return next();
@@ -74,17 +72,9 @@ export const determineSecurityContext = async (req, res, next) => {
       });
     }
 
-    // Agregar información de empresa al request
-    req.company = {
-      company_code: company.company_code,
-      company_id: company.id,
-    };
-
     // Establecer contexto de seguridad con empresa
     req.securityContext = {
-      hasCompany: true,
-      securityLevel: securityLevel,
-      companyCode: companyCode
+      companyCode: company.company_code
     };
 
     return next();
