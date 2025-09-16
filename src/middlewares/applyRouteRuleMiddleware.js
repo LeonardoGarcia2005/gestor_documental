@@ -2,11 +2,12 @@ import { routeRuleDAO } from "../dataAccessObjects/routeRuleDAO.js";
 import { channelDAO } from "../dataAccessObjects/channelDAO.js";
 import { documentTypeDAO } from "../dataAccessObjects/documentTypeDAO.js";
 import { getParameterValue } from "../lib/routeParameterMappings.js";
+import { securityLevelDAO } from "../dataAccessObjects/securityLevelDAO.js";
 
 export const applyRouteRule = async (req, res, next) => {
   try {
     const rawValues = req.body;
-    const { securityContext } = req;
+    const { securityContext, hasManyFiles } = req;
 
     if (!securityContext) {
       return res.status(500).json({
@@ -17,20 +18,22 @@ export const applyRouteRule = async (req, res, next) => {
     // Ingresar el valor del codigo de la empresa solo si existe
     const finalValues = {
       ...rawValues,
+      hasManyFiles,
       ...(securityContext.companyCode
         ? { companyCode: securityContext.companyCode }
         : {}),
     };
 
     // Realizar las consultas en conjunto para optimizar el middleware
-    const [channelExists, documentTypeExists, routeParameters] =
+    const [channelExists, documentTypeExists, securityLevel, routeParameters] =
       await Promise.all([
         channelDAO.existsChannel(finalValues.channel),
         documentTypeDAO.existDocumentType(finalValues.documentType),
+        securityLevelDAO.getSecurityByType(finalValues.securityLevel),
         routeRuleDAO.getRouteRuleBySecurityAndCompany(finalValues),
       ]);
 
-    if (!channelExists) {
+    if (!channelExists.exists) {
       return res.status(404).json({
         error: "No se encontró el canal especificado en la base de datos",
       });
@@ -83,7 +86,13 @@ export const applyRouteRule = async (req, res, next) => {
       }
     }
 
-    // Guardar en el request
+    // Guardar en request los ids del canal y el id del tipo documento y el de la route_rule
+    req.channelId = channelExists.id;
+    req.documentTypeId = documentTypeExists.id;
+    req.routeRuleId = routeParameters[0].route_rule_id;
+    req.securityLevelId = securityLevel.id;
+
+    // Guardar en el request la ruta completa ajustada
     req.routePath = routeParts.join(separator);
 
     next();

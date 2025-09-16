@@ -40,10 +40,10 @@ const uploadSettings = (fieldName) => {
     const uploadHandler = multer({
       storage,
       limits: {
-        fileSize: fileConfig.maxFileSize,
-        files: fileConfig.maxFiles,
-        fieldNameSize: fileConfig.maxFilenameLength,
-        fieldSize: fileConfig.maxFieldSize,
+        fileSize: fileConfig.maxFileSize, // Limite de tamaño para archivos binarios
+        files: fileConfig.maxFiles, // Cantidad maxima de archivos
+        fieldNameSize: fileConfig.maxFilenameLength, // Longitud maxima del nombre del campo
+        fieldSize: fileConfig.maxFieldSize, // Limite para archivos de texto
       },
       fileFilter: (_, file, cb) => {
         try {
@@ -81,7 +81,7 @@ const uploadSettings = (fieldName) => {
   };
 };
 
-export const handleSingleFile = (fieldName = "file") =>
+export const handleSingleFile = (fieldName) =>
   uploadSettings(fieldName);
-export const handleMultipleFiles = (fieldName = "files") =>
+export const handleMultipleFiles = (fieldName) =>
   uploadSettings(fieldName);

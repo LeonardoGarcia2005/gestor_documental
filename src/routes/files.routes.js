@@ -1,13 +1,14 @@
 import { Router } from "express";
-import { handleSingleFile, handleMultipleFiles } from "../middlewares/multerConfig.js";
-import { validateSchema } from "../middlewares/validateSchema.js";
-import { determineSecurityContext } from "../middlewares/securityContext.js";
-import { measureUploadTime } from "../middlewares/performanceMetrics.js";
-import { applyRouteRule } from "../middlewares/applyRouteRule.js";
-import { handleFileUpload } from "../controllers/files/fileUploadController.js";
-import { 
+import { handleSingleFile } from "../middlewares/multerMiddleware.js"
+import { attachFileExtensions } from "../middlewares/fileExtensionMiddleware.js";
+import { validateSchema } from "../middlewares/schemaCoreMiddleware.js";
+import { determineSecurityContext } from "../middlewares/determineSecurityContextMiddleware.js";
+import { measureUploadTime } from "../middlewares/performanceMetricsMiddleware.js";
+import { applyRouteRule } from "../middlewares/applyRouteRuleMiddleware.js";
+import { uploadSingleFile } from "../controllers/files/uploadSingleFileController.js";
+import {  
   createSingleFileSchema, 
-  createMultipleFilesSchema,
+/*   createMultipleFilesSchema, */
 } from "../schemas/filesSchemas.js";
 
 const router = Router();
@@ -17,10 +18,11 @@ router.post(
   "/upload/single",
   handleSingleFile('file'),
   validateSchema(createSingleFileSchema),
+  attachFileExtensions,
   determineSecurityContext,
-  measureUploadTime,
   applyRouteRule,
-  handleFileUpload
+  measureUploadTime,
+  uploadSingleFile
 );
 
 // Endpoint para subir MÚLTIPLES archivos (diferentes resoluciones)

@@ -74,6 +74,7 @@ export const determineSecurityContext = async (req, res, next) => {
 
     // Establecer contexto de seguridad con empresa
     req.securityContext = {
+      companyId: company.id,
       companyCode: company.company_code
     };
 

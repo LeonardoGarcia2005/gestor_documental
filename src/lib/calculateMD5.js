@@ -1,11 +1,9 @@
 import crypto from "crypto";
-import fs from "fs";
 
-const calculateMD5 = (filePath) => {
-  const fileBuffer = fs.readFileSync(filePath);
+const calculateMD5 = (buffer) => {
   const hashSum = crypto.createHash("md5");
-  hashSum.update(fileBuffer);
+  hashSum.update(buffer);
   return hashSum.digest("hex"); // siempre devuelve 32 caracteres
-}
+};
 
 export default calculateMD5;

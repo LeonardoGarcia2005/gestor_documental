@@ -1,22 +1,19 @@
-// fileExtensionMiddleware.js
 import path from "path";
 import { extensionDAO } from "../dataAccessObjects/extensionDAO.js";
 import { loggerGlobal } from "../logging/loggerManager.js";
-
-// ==========================
-// Configuración estática
-// ==========================
 
 // Mapeo de MIME types a extensiones
 const MIME_TO_EXTENSION = {
   // Documentos
   "application/pdf": "pdf",
   "application/msword": "doc",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    "docx",
   "application/vnd.ms-excel": "xls",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "application/vnd.ms-powerpoint": "ppt",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+    "pptx",
   "text/plain": "txt",
   "text/csv": "csv",
   "application/json": "json",
@@ -72,8 +69,23 @@ const DANGEROUS_MIME_TYPES = [
 
 // Extensiones peligrosas
 const DANGEROUS_EXTENSIONS = [
-  "exe", "bat", "cmd", "com", "pif", "scr", "vbs", "js", "jar",
-  "msi", "dll", "app", "sh", "run", "deb", "pkg", "dmg",
+  "exe",
+  "bat",
+  "cmd",
+  "com",
+  "pif",
+  "scr",
+  "vbs",
+  "js",
+  "jar",
+  "msi",
+  "dll",
+  "app",
+  "sh",
+  "run",
+  "deb",
+  "pkg",
+  "dmg",
 ];
 
 // ==========================
@@ -91,11 +103,17 @@ export const attachFileExtensions = async (req, res, next) => {
     // Extensiones válidas desde BD
     const extensions = await extensionDAO.getAllExtensions();
     const extMap = new Map(
-      extensions.map((ext) => [ext.name.toLowerCase(), { id: ext.id, name: ext.name }])
+      extensions.map((ext) => [
+        ext.name.toLowerCase(),
+        { id: ext.id, name: ext.name },
+      ])
     );
 
     const validateFile = (file) => {
-      const extFromName = path.extname(file.originalname).replace(/^\./, "").toLowerCase();
+      const extFromName = path
+        .extname(file.originalname)
+        .replace(/^\./, "")
+        .toLowerCase();
       const extFromMime = MIME_TO_EXTENSION[file.mimetype];
 
       // Bloquear MIME peligroso
@@ -117,7 +135,7 @@ export const attachFileExtensions = async (req, res, next) => {
       if (extFromMime !== extFromName) {
         throw new Error(
           `La extensión y el MIME no coinciden en ${file.originalname}. ` +
-          `Extensión: ${extFromName}, MIME esperado: ${extFromMime}`
+            `Extensión: ${extFromName}, MIME esperado: ${extFromMime}`
         );
       }
 
@@ -128,22 +146,31 @@ export const attachFileExtensions = async (req, res, next) => {
       }
 
       return {
+        cleanName: file.originalname,
         extensionId: dbExt.id,
         extensionName: dbExt.name,
-        fileName: file.originalname,
         mimeType: file.mimetype,
-        size_bytes: file.size ?? 0, // tamaño en bytes
+        sizeBytes: file.size ?? 0,
+        buffer: file.buffer,
       };
     };
 
-    req.fileInfo =
-      req.files.length === 1
-        ? validateFile(req.files[0])
-        : req.files.map(validateFile);
+    // Procesar archivos
+    const processedFiles = req.files.map(validateFile);
 
-    loggerGlobal.info("Información de archivos lista para insertar", {
-      fileInfo: req.fileInfo,
-    });
+    // Asignar información al request
+    req.hasManyFiles = req.files.length > 1;
+    
+    if (req.files.length === 1) {
+      // Un solo archivo - acceso directo
+      req.fileInfo = processedFiles[0];
+    } else {
+      // Múltiples archivos - array
+      req.processedFiles = processedFiles;
+    }
+
+
+    loggerGlobal.info(`Procesados ${processedFiles.length} archivo(s) exitosamente`);
 
     next();
   } catch (error) {

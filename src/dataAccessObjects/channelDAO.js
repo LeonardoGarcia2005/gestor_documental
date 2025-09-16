@@ -3,26 +3,27 @@ import { loggerGlobal } from "../logging/loggerManager.js";
 
 const existsChannel = async (channel) => {
   try {
-    // Consulta parametrizada para evitar inyección SQL
     const queryChannel = `
-        SELECT EXISTS (
-          SELECT 1
-          FROM channel
-          WHERE status = TRUE
-          AND name = $1
-        );
+      SELECT id, TRUE as exists
+      FROM channel
+      WHERE status = TRUE
+      AND name = $1
+      LIMIT 1;
     `;
 
     const values = [channel];
 
-    // Ejecución de la consulta
     const resultChannel = await dbConnectionProvider.firstOrDefault(
       queryChannel,
       values
     );
 
-    // Retornar true o false
-    return resultChannel;
+    // Si no encuentra nada, devolvemos false y null
+    if (!resultChannel) {
+      return { exists: false, id: null };
+    }
+
+    return { exists: true, id: resultChannel.id };
   } catch (err) {
     loggerGlobal.error(`Error al obtener el canal`, err);
     throw new Error("Error al obtener el canal");

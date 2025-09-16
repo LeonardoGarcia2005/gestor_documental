@@ -6,6 +6,7 @@ const getRouteRuleBySecurityAndCompany = async (finalValues) => {
 
     const queryParameters = `
       SELECT 
+        rr.id as route_rule_id,
         rp.parameter_key,
         rp.name,
         rrp.default_value,
@@ -17,18 +18,18 @@ const getRouteRuleBySecurityAndCompany = async (finalValues) => {
       JOIN route_rule rr ON rrp.route_rule_id = rr.id
       WHERE rr.security_level_type = $1 
         AND rr.company_required = $2
-        AND rr.is_template_for_insertion = TRUE
+        AND rr.is_multi_file = $3
         AND rr.status = TRUE
         AND rrp.status = TRUE
         AND rp.status = TRUE
       ORDER BY rrp.position_order
     `;
 
-    const values = [finalValues.securityLevel, finalValues.hasCompany];
+    const values = [finalValues.securityLevel, finalValues.hasCompany, finalValues.hasManyFiles];
     const routeParameters = await dbConnectionProvider.getAll(queryParameters, values);
 
     if (!routeParameters || routeParameters.length === 0) {
-      throw new Error(`No se encontró una regla de ruta para securityLevel: ${securityLevel}, hasCompany: ${hasCompany}`);
+      throw new Error(`No se encontró una regla de ruta para securityLevel: ${finalValues.securityLevel}, hasCompany: ${finalValues.hasCompany}, hasManyFile: ${finalValues.hasManyFiles}`);
     }
 
     return routeParameters

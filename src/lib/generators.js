@@ -9,3 +9,7 @@ export const generateCompanyCode = () => {
 
   return `EMP-${code}`;
 };
+
+// Funcion encargada de generar un código aleatorio para el nombre de un archivo
+export const generateCodeFile = () =>
+  `FILE-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;

@@ -1,16 +1,16 @@
-import { dbConnectionProvider } from "../db/dbConnectionManager.js";
-import { loggerGlobal } from "../../globalServices/logging/loggerManager.js";
+import { loggerGlobal } from "../logging/loggerManager.js";
+import { dbConnectionProvider } from "../config/db/dbConnectionManager.js";
 
-const getSecurityByLevel = async (level) => {
+const getSecurityByType = async (type) => {
   try {
     // Consulta parametrizada para evitar inyección SQL
     const querySecurity = `
-            SELECT id, status, type
+            SELECT id, type
                 FROM security_level 
-                WHERE status = $1
+                WHERE type = $1
         `;
 
-    const values = [level];
+    const values = [type];
 
     // Ejecución de la consulta
     const resultSecurity = await dbConnectionProvider.firstOrDefault(
@@ -28,7 +28,7 @@ const getSecurityByLevel = async (level) => {
   }
 };
 const securityLevelDAO = {
-  getSecurityByLevel,
+  getSecurityByType,
 };
 
 export { securityLevelDAO };
