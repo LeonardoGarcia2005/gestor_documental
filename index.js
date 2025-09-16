@@ -61,6 +61,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// Saludo del gestor documental
+app.get("/", (_, res) => {
+  res.send("Gestor Documental");
+});
+
 // Rutas de upload
 app.use("/gestor/api", filesRouter)
 
