@@ -1,34 +1,37 @@
 import { Router } from "express";
-import { determineSecurityContext } from "../middlewares/determineSecurityContext.js"
-import { measureUploadTime } from "../middlewares/measureUploadTime.js"
-import { applyRouteRule } from "../middlewares/applyRouteRule.js"
-import { configureDynamicUpload } from "../middlewares/configureDynamicUpload.js"
-import { validateSchema } from "../middlewares/validations.js"
-import { handleFileUpload } from "../controllers/files/uploadfiles.js"
-import { createNewFileSchema } from "../schemas/fileSchemas.js"
+import { handleSingleFile, handleMultipleFiles } from "../middlewares/multerConfig.js";
+import { validateSchema } from "../middlewares/validateSchema.js";
+import { determineSecurityContext } from "../middlewares/securityContext.js";
+import { measureUploadTime } from "../middlewares/performanceMetrics.js";
+import { applyRouteRule } from "../middlewares/applyRouteRule.js";
+import { handleFileUpload } from "../controllers/files/fileUploadController.js";
+import { 
+  createSingleFileSchema, 
+  createMultipleFilesSchema,
+} from "../schemas/filesSchemas.js";
 
 const router = Router();
 
-// Endpoint para subir UN archivo
+// Endpoint para subir UN archivo (resolución original o específica)
 router.post(
-  "/upload",
-  configureDynamicUpload,
-  validateSchema(createNewFileSchema),
+  "/upload/single",
+  handleSingleFile('file'),
+  validateSchema(createSingleFileSchema),
   determineSecurityContext,
   measureUploadTime,
   applyRouteRule,
   handleFileUpload
 );
 
-// Endpoint para subir MÚLTIPLES archivos
-router.post(
+// Endpoint para subir MÚLTIPLES archivos (diferentes resoluciones)
+/* router.post(
   "/upload/multiple",
-  configureDynamicUpload,
-  validateSchema(createNewFileSchema),
+  handleMultipleFiles('files'),
+  validateSchema(createMultipleFilesSchema),
   determineSecurityContext,
   measureUploadTime,
   applyRouteRule,
   handleFileUpload
 );
-  
+ */
 export default router;
