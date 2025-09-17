@@ -12,6 +12,7 @@
   "author": "Leonardo G",
   "license": "ISC",
   "dependencies": {
+    "@joi/date": "^2.1.1",
     "axios": "^1.7.7",
     "convict": "^6.2.4",
     "convict-format-with-validator": "^6.2.0",

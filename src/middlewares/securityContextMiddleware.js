@@ -27,6 +27,7 @@ export const determineSecurityContext = async (req, res, next) => {
     if (!hasCompany) {
       // Establecer contexto de seguridad sin empresa
       req.securityContext = {
+        companyId: null,
         companyCode: null
       };
       return next();

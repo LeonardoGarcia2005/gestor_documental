@@ -2,7 +2,7 @@ import { Router } from "express";
 import { handleSingleFile } from "../middlewares/multerMiddleware.js"
 import { attachFileExtensions } from "../middlewares/fileExtensionMiddleware.js";
 import { validateSchema } from "../middlewares/schemaCoreMiddleware.js";
-import { determineSecurityContext } from "../middlewares/determineSecurityContextMiddleware.js";
+import { determineSecurityContext } from "../middlewares/securityContextMiddleware.js";
 import { measureUploadTime } from "../middlewares/performanceMetricsMiddleware.js";
 import { applyRouteRule } from "../middlewares/applyRouteRuleMiddleware.js";
 import { uploadSingleFile } from "../controllers/files/uploadSingleFileController.js";

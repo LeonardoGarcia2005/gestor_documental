@@ -1,7 +1,7 @@
 import multer from "multer";
-import path from "path";
 import { loggerGlobal } from "../logging/loggerManager.js";
 import dotenv from "dotenv";
+import { sanitizeFileName } from "../lib/formatters.js";
 
 dotenv.config();
 
@@ -14,24 +14,6 @@ const fileConfig = {
   maxFiles: parseInt(process.env.MAX_FILES_COUNT || "10"),
   maxFilenameLength: parseInt(process.env.MAX_FILENAME_LENGTH || "50"),
   maxFieldSize: parseInt(process.env.MAX_FIELD_SIZE_KB || "1024") * 1024,
-};
-
-// Sanitizar nombre
-export const sanitizeFileName = (filename) => {
-  const ext = path.extname(filename);
-  const name = path.basename(filename, ext);
-
-  const sanitizedName = name
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9\-_]/g, "")
-    .replace(/[-_]{2,}/g, "_")
-    .replace(/^[-_]+|[-_]+$/g, "");
-
-  const finalName = sanitizedName || `archivo_${Date.now()}`;
-  const truncatedName = finalName.substring(0, fileConfig.maxFilenameLength);
-
-  return `${truncatedName}${ext.toLowerCase()}`;
 };
 
 // Middleware genérico para subir
