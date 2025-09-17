@@ -1,11 +1,17 @@
 import path from "path";
+import fs from "fs/promises";
 import calculateMD5 from "../../lib/calculateMD5.js";
 import { filesDAO } from "../../dataAccessObjects/filesDAO.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
 import { generateCodeFile } from "../../lib/generators.js";
 import { formatDate } from "../../lib/formatters.js";
+import { saveFileFromBuffer } from "../../lib/fileSystemManager.js";
+import { dbConnectionProvider } from "../../config/db/dbConnectionManager.js";
 
 export const uploadSingleFile = async (req, res) => {
+  let responseData = null;
+  let fullStoragePath = null;
+
   try {
     const {
       securityContext,
@@ -25,7 +31,7 @@ export const uploadSingleFile = async (req, res) => {
 
     const md5 = calculateMD5(buffer);
 
-    // Validar que el archivo ya no exista en la base de datos
+    // Validar que el archivo ya no exista en la base de datos (fuera de transacción)
     const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(
       md5,
       routeRuleId
@@ -34,7 +40,7 @@ export const uploadSingleFile = async (req, res) => {
       return res.status(200).json({
         message: "El archivo ya existe",
         details: {
-          urlFile: fileExists.urlFile,
+          fileName: fileExists.fileName,
           codeFile: fileExists.codeFile,
           emissionDate: formatDate(fileExists.emissionDate),
           expirationDate: formatDate(fileExists.expirationDate),
@@ -53,40 +59,66 @@ export const uploadSingleFile = async (req, res) => {
     // Construir el nuevo nombre
     const fileNameWithCode = `${baseName}-${codeFile}${ext}`;
 
-    // Unir a la ruta final
+    // Unir a la ruta final para la URL
     const routeWithFileNameAndCode = `${routePath}/${fileNameWithCode}`;
 
-    // Insertar el archivo a la base de datos
-    const fileInserted = await filesDAO.insertFile(
-      securityContext.companyId ?? null,
-      documentTypeId,
-      channelId,
-      securityLevelId,
-      extensionId,
-      codeFile,
-      false, // is_used
-      routeRuleId,
-      routeWithFileNameAndCode,
-      emissionDate,
-      expirationDate,
-      false, // hasVariants
-      sizeBytes,
-      md5
-    );
+    // Ruta física completa del archivo
+    fullStoragePath = path.join(routePath, fileNameWithCode);
 
-    return res.status(201).json({
-      success: true,
-      message: "Archivo subido exitosamente",
-      details: {
-        urlFile: fileInserted.url_calculated,
-        codeFile: fileInserted.code,
-        emissionDate: formatDate(fileInserted.document_emission_date),
-        expirationDate: formatDate(fileInserted.document_expiration_date),
-        documentType,
-      },
+    // Ejecutar la transacción para operaciones de BD
+    await dbConnectionProvider.tx(async (t) => {
+      // Insertar el archivo a la base de datos dentro de la transacción
+      const fileInserted = await filesDAO.insertFile(
+        securityContext.companyId ?? null,
+        documentTypeId,
+        channelId,
+        securityLevelId,
+        extensionId,
+        codeFile,
+        false, // is_used
+        routeRuleId,
+        fileNameWithCode,
+        emissionDate,
+        expirationDate,
+        false, // hasVariants
+        sizeBytes,
+        md5,
+        t // pasar la transacción
+      );
+
+      // Preparar datos de respuesta
+      responseData = {
+        success: true,
+        message: "Archivo subido exitosamente",
+        details: {
+          urlFile: routeWithFileNameAndCode,
+          codeFile: fileInserted.code,
+          emissionDate: formatDate(fileInserted.document_emission_date),
+          expirationDate: formatDate(fileInserted.document_expiration_date),
+          documentType,
+        },
+      };
     });
+
+    // Si la transacción fue exitosa, guardar el archivo físico
+    await saveFileFromBuffer(fullStoragePath, buffer);
+
+    // Devolver respuesta exitosa
+    return res.status(201).json(responseData);
+
   } catch (error) {
-    loggerGlobal.error("Error en uploadOneFile:", error);
+    loggerGlobal.error("Error en uploadSingleFile:", error);
+    
+    // Si el archivo físico fue creado pero hubo error, intentar eliminarlo
+    if (fullStoragePath) {
+      try {
+        await fs.unlink(fullStoragePath);
+        loggerGlobal.info(`Archivo físico eliminado tras error: ${fullStoragePath}`);
+      } catch (cleanupError) {
+        loggerGlobal.error(`Error eliminando archivo físico tras fallo:`, cleanupError);
+      }
+    }
+
     return res.status(500).json({
       error: "Error procesando el archivo",
       details: error.message,

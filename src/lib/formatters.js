@@ -29,7 +29,7 @@ export const formatDate = (date) => {
 };
 
 // Sanitizar nombre
-export const sanitizeFileName = (filename) => {
+export const sanitizeFileName = (filename, maxFilenameLength) => {
   const ext = path.extname(filename);
   const name = path.basename(filename, ext);
 
@@ -41,7 +41,7 @@ export const sanitizeFileName = (filename) => {
     .replace(/^[-_]+|[-_]+$/g, "");
 
   const finalName = sanitizedName || `archivo_${Date.now()}`;
-  const truncatedName = finalName.substring(0, fileConfig.maxFilenameLength);
+  const truncatedName = finalName.substring(0, maxFilenameLength);
 
   return `${truncatedName}${ext.toLowerCase()}`;
 };

@@ -6,7 +6,7 @@ const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
     // Consulta parametrizada para evitar inyección SQL
     const queryFile = `
             SELECT 
-            url_calculated AS urlFile, 
+            file_name AS fileName, 
             code AS codeFile, 
             dt.name AS documentType, 
             document_emission_date AS emissionDate, 
@@ -41,12 +41,13 @@ const insertFile = async (
   codeFile,
   isUsed,
   routeRuleId,
-  urlCalculated,
+  fileName,
   documentEmissionDate,
   documentExpirationDate,
   hasVariants,
   sizeBytes,
-  fileHashMd5
+  fileHashMd5,
+  t
 ) => {
   try {
     // Validar que si no viene la fecha de emision ni de expiracion colocar unas por defecto
@@ -72,7 +73,7 @@ const insertFile = async (
       code: codeFile,
       is_used: isUsed,
       route_rule_id: routeRuleId,
-      url_calculated: urlCalculated,
+      file_name: fileName,
       has_variants: hasVariants,
       size_bytes: sizeBytes,
       file_hash_md5: fileHashMd5,
@@ -92,7 +93,7 @@ const insertFile = async (
       "extension_id",
       "code",
       "route_rule_id",
-      "url_calculated",
+      "file_name",
       "size_bytes",
       "file_hash_md5",
     ];
@@ -104,7 +105,7 @@ const insertFile = async (
     }
 
     // Ejecución de la consulta de inserción
-    const result = await dbConnectionProvider.insertOne("file", values);
+    const result = await dbConnectionProvider.insertOne("file", values, t);
 
     return result;
   } catch (error) {
@@ -112,7 +113,7 @@ const insertFile = async (
       error: error.message,
       stack: error.stack,
       codeFile,
-      urlCalculated,
+      fileName,
     });
     throw new Error(`Error al insertar archivo: ${error.message}`);
   }

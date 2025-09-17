@@ -33,7 +33,7 @@ const uploadSettings = (fieldName) => {
             return cb(new Error("No se recibió ningún archivo"));
           }
           // sanitizamos el nombre
-          file.originalname = sanitizeFileName(file.originalname);
+          file.originalname = sanitizeFileName(file.originalname, fileConfig.maxFilenameLength);
           cb(null, true);
         } catch (error) {
           cb(error);
