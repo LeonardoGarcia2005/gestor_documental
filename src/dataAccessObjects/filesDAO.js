@@ -6,13 +6,15 @@ const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
     // Consulta parametrizada para evitar inyección SQL
     const queryFile = `
             SELECT 
-            file_name AS fileName, 
-            code AS codeFile, 
-            dt.name AS documentType, 
-            document_emission_date AS emissionDate, 
-            document_expiration_date AS expirationDate
+            file_name AS "fileName", 
+            code AS "codeFile", 
+            dt.name AS "documentType", 
+            document_emission_date AS "emissionDate", 
+            document_expiration_date AS "expirationDate",
+            sl.type AS "securityLevel"
             FROM file AS f
             JOIN document_type dt ON f.document_type_id = dt.id
+            JOIN security_level sl ON f.security_level_id = sl.id
             WHERE f.route_rule_id = $1 AND f.file_hash_md5 = $2 AND f.status = TRUE
         `;
 

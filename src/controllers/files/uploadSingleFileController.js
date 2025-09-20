@@ -5,8 +5,10 @@ import { filesDAO } from "../../dataAccessObjects/filesDAO.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
 import { generateCodeFile } from "../../lib/generators.js";
 import { formatDate } from "../../lib/formatters.js";
-import { saveFileFromBuffer } from "../../lib/fileSystemManager.js";
+import { saveFileFromBuffer } from "../../services/fileSystem.js";
 import { dbConnectionProvider } from "../../config/db/dbConnectionManager.js";
+import { buildFileUrl } from "../../lib/builder.js";
+import { securityLevels } from "../../dataAccessObjects/enumDAO.js";
 
 export const uploadSingleFile = async (req, res) => {
   let responseData = null;
@@ -27,7 +29,8 @@ export const uploadSingleFile = async (req, res) => {
     const { cleanName, extensionId, sizeBytes, buffer } = fileInfo;
 
     // Obtener los valores de la fecha de emisión y cuando se expira (formato YYYY-MM-DD)
-    const { emissionDate, expirationDate, documentType } = req.body;
+    const { emissionDate, expirationDate, documentType, securityLevel } =
+      req.body;
 
     const md5 = calculateMD5(buffer);
 
@@ -36,15 +39,31 @@ export const uploadSingleFile = async (req, res) => {
       md5,
       routeRuleId
     );
+
+    // Evaluar el tipo de seguridad para retornarle la url o no para decirle que el archivo es privado debe consultarlo para poder obtener la url
+    const publicLevel = securityLevels.find((level) =>
+      level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
+    );
+
     if (fileExists) {
+      const fullRoutePath = `${routePath}/${fileExists.fileName}`;
+      const fileUrl = buildFileUrl(fullRoutePath);
+
       return res.status(200).json({
         message: "El archivo ya existe",
         details: {
-          fileName: fileExists.fileName,
+          ...(securityLevel === publicLevel
+            ? {
+                fileUrl: fileUrl,
+              }
+            : {
+                fileName: fileExists.fileName,
+              }),
           codeFile: fileExists.codeFile,
           emissionDate: formatDate(fileExists.emissionDate),
           expirationDate: formatDate(fileExists.expirationDate),
           documentType: fileExists.documentType,
+          securityLevel: fileExists.securityLevel,
         },
       });
     }
@@ -91,10 +110,17 @@ export const uploadSingleFile = async (req, res) => {
         success: true,
         message: "Archivo subido exitosamente",
         details: {
-          urlFile: routeWithFileNameAndCode,
+          ...(securityLevel === publicLevel
+            ? {
+                fileUrl: routeWithFileNameAndCode,
+              }
+            : {
+                fileName: fileNameWithCode,
+              }),
           codeFile: fileInserted.code,
           emissionDate: formatDate(fileInserted.document_emission_date),
           expirationDate: formatDate(fileInserted.document_expiration_date),
+          securityLevel,
           documentType,
         },
       };
@@ -105,17 +131,21 @@ export const uploadSingleFile = async (req, res) => {
 
     // Devolver respuesta exitosa
     return res.status(201).json(responseData);
-
   } catch (error) {
     loggerGlobal.error("Error en uploadSingleFile:", error);
-    
+
     // Si el archivo físico fue creado pero hubo error, intentar eliminarlo
     if (fullStoragePath) {
       try {
         await fs.unlink(fullStoragePath);
-        loggerGlobal.info(`Archivo físico eliminado tras error: ${fullStoragePath}`);
+        loggerGlobal.info(
+          `Archivo físico eliminado tras error: ${fullStoragePath}`
+        );
       } catch (cleanupError) {
-        loggerGlobal.error(`Error eliminando archivo físico tras fallo:`, cleanupError);
+        loggerGlobal.error(
+          `Error eliminando archivo físico tras fallo:`,
+          cleanupError
+        );
       }
     }
 
