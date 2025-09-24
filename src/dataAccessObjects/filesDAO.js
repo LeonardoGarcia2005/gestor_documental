@@ -121,9 +121,32 @@ const insertFile = async (
   }
 };
 
+export const changeStatusFile = async (codeFile, isActive) => {
+  try {
+    
+    const result = await dbConnectionProvider.updateOne(
+      "file",
+      { is_used: isActive },
+      null,
+      { code: codeFile }
+    );
+
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al cambiar el estado en el archivo", {
+      error: error.message,
+      stack: error.stack,
+      codeFile,
+      isActive,
+    });
+    throw new Error(`Error al cambiar el estado en el archivo: ${error.message}`);
+  }
+};
+
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
   insertFile,
+  changeStatusFile
 };
 
 export { filesDAO };

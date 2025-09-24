@@ -2,11 +2,14 @@ import { filesDAO } from "../../dataAccessObjects/filesDAO.js"
 
 export const changeStatusFile = async (req, res) => {
   try {
-    const { codeFile, is_active } = req.body;
+    const { codeFile, isActive } = req.body;
 
-    const result = await filesDAO.changeStatusFile(codeFile, is_active);
+    await filesDAO.changeStatusFile(codeFile, isActive);
     // Responder con el resultado
-    return res.status(200).json(result);
+    return res.status(200).json({
+      success: true,
+      message: "Archivo actualizado exitosamente",
+    });
   } catch (error) {
     // Manejo de errores internos
     return res.status(500).json({

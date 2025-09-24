@@ -6,5 +6,5 @@ import deleteCompany from "../controllers/company/deleteCompany.js";
 const router = Router();
 
 //-------------Servicios para la empresa--------------//
-router.post("/createCompany", verifyAccessToken, createCompanyAndToken);
-router.delete("/deleteCompany", verifyAccessToken, deleteCompany);
+router.post("/createCompany", createCompanyAndToken);
+router.delete("/deleteCompany", deleteCompany);
