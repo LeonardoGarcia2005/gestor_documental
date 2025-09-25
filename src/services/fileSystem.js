@@ -1,4 +1,3 @@
-
 import fs from "fs/promises";
 import path from "path";
 import { loggerGlobal } from "../logging/loggerManager.js";
@@ -9,11 +8,75 @@ export const saveFileFromBuffer = async (filePath, buffer) => {
     // Crear directorios si no existen
     const dir = path.dirname(filePath);
     await fs.mkdir(dir, { recursive: true });
-    
+
     // Guardar el archivo
     await fs.writeFile(filePath, buffer);
   } catch (error) {
     loggerGlobal.error(`Error guardando archivo ${filePath}:`, error);
     throw new Error(`No se pudo guardar el archivo: ${error.message}`);
+  }
+};
+
+export const saveMultipleFilesFromBuffer = async (fileData) => {
+  const savedFiles = [];
+  const failedFiles = [];
+
+  try {
+    // Procesar todos los archivos
+    for (const { filePath, buffer, originalName } of fileData) {
+      try {
+        await saveFileFromBuffer(filePath, buffer);
+        savedFiles.push({ filePath, originalName, success: true });
+        loggerGlobal.info(
+          `Archivo guardado exitosamente: ${originalName} -> ${filePath}`
+        );
+      } catch (error) {
+        failedFiles.push({
+          filePath,
+          originalName,
+          error: error.message,
+          success: false,
+        });
+        loggerGlobal.error(`Error guardando archivo ${originalName}:`, error);
+      }
+    }
+
+    // Si hay archivos que fallaron, limpiar los exitosos (rollback)
+    if (failedFiles.length > 0 && savedFiles.length > 0) {
+      loggerGlobal.warn("Algunos archivos fallaron, ejecutando rollback...");
+      await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
+    }
+
+    return {
+      success: failedFiles.length === 0,
+      savedFiles,
+      failedFiles,
+      totalFiles: fileData.length,
+      successCount: savedFiles.length,
+      failureCount: failedFiles.length,
+    };
+  } catch (error) {
+    loggerGlobal.error("Error general guardando múltiples archivos:", error);
+
+    // Limpiar archivos guardados en caso de error general
+    if (savedFiles.length > 0) {
+      await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
+    }
+
+    throw new Error(`Error procesando múltiples archivos: ${error.message}`);
+  }
+};
+
+const rollbackSavedFiles = async (filePaths) => {
+  for (const filePath of filePaths) {
+    try {
+      await fs.unlink(filePath);
+      loggerGlobal.info(`Archivo eliminado en rollback: ${filePath}`);
+    } catch (error) {
+      loggerGlobal.error(
+        `Error eliminando archivo en rollback ${filePath}:`,
+        error
+      );
+    }
   }
 };

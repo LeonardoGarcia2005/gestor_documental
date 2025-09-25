@@ -1,3 +1,5 @@
+import jwt from "jsonwebtoken";
+
 // Crear token con o sin empresa
 export const createAccessToken = async (companyCode = null, additionalData = {}) => {
   try {

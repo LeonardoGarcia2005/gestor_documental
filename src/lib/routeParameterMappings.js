@@ -1,10 +1,14 @@
+import { loggerGlobal } from "../logging/loggerManager.js";
+
 const PARAMETER_MAPPINGS = {
     // Parámetros básicos del sistema los cuales estan en la base de datos
     '{security}': (context) => 
       context.securityLevel?.toLowerCase() === 'public' ? 'publico' : 'privado',
     
-    '{company}': (context) => 
+    '{company}': (context) =>
       !context.hasCompany ? 'sin_empresa' : (context.companyCode || null),
+
+    '{companyCode}': (context) => context.companyCode || null,
     
     '{document_type}': (context) => context.documentType || null,
     '{storage}': (context) => context.storage || null,

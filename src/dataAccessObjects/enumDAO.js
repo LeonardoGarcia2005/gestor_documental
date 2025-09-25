@@ -18,3 +18,4 @@ const getEnumValues = async (enumName) => {
 export const channels = await getEnumValues("channel_enum");
 export const documentTypes = await getEnumValues("document_type_enum");
 export const securityLevels = await getEnumValues("security_level_enum");
+export const fileExtensions = await getEnumValues("file_extension");

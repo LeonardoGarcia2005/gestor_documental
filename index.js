@@ -3,6 +3,7 @@ const { json, urlencoded } = pkg1
 import cors from 'cors'
 import { configurationProvider } from './src/config/configurationManager.js'
 import filesRouter from "./src/routes/files.routes.js"
+import companyRouter from "./src/routes/company.routes.js"
 import { loggerGlobal } from './src/logging/loggerManager.js'
 import { app } from './app.js'
 import { exit } from 'node:process'
@@ -66,8 +67,10 @@ app.get("/", (_, res) => {
   res.send("Gestor Documental");
 });
 
-// Rutas de upload
-app.use("/gestor/api", filesRouter)
+const API_PREFIX = "/gestor/api"
+
+app.use(`${API_PREFIX}`, filesRouter)
+app.use(`${API_PREFIX}`, companyRouter)
 
 // Iniciar el servidor Express
 try {

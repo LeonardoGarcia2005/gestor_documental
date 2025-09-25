@@ -2,7 +2,6 @@ import { companyDAO } from "../../dataAccessObjects/companyDAO.js";
 import { createAccessToken } from "../../lib/jwt.js";
 import { generateCompanyCode } from "../../lib/generators.js";
 import { normalizeCompanyName } from "../../lib/formatters.js";
-import { generateCompanyCode } from "../../lib/generators.js";
 
 const createCompanyAndToken = async (req, res) => {
   try {
@@ -32,7 +31,7 @@ const createCompanyAndToken = async (req, res) => {
     const companyCode = generateCompanyCode();
 
     // Crear el token usando la utilidad
-    const token = await createAccessToken(companyCode, true);
+    const token = await createAccessToken(companyCode);
 
     // Llamar al servicio para crear la empresa
     await companyDAO.createCompany(companyCode, name, token);
