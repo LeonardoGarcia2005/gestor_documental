@@ -166,15 +166,9 @@ export const uploadMultipleFiles = async (req, res) => {
   let responseData = null;
 
   try {
-    const {
-      securityContext,
-      routePath,
-      routeRuleId,
-      securityLevelId,
-      channelId,
-    } = req;
-
-    const { documentType, expirationDate, emissionDate, metadata, files } = req.body;
+    const { securityContext, securityLevelId, channelId, documentTypeId } = req;
+    const { documentType, securityLevel, expirationDate, emissionDate, metadata } = req.body;
+    const files = Array.isArray(req.processedFiles) ? req.processedFiles : [];
 
     // Evaluar el tipo de seguridad para determinar si retornar URLs
     const publicLevel = securityLevels.find((level) =>
@@ -186,16 +180,23 @@ export const uploadMultipleFiles = async (req, res) => {
 
     // Procesar cada archivo
     for (let i = 0; i < files.length; i++) {
-      const fileItem = files[i];
-      const { file: fileInfo } = fileItem;
+      const fileEntry = files[i];
+      const fileInfo = {
+        cleanName: fileEntry.cleanName,
+        extensionId: fileEntry.extensionId,
+        sizeBytes: fileEntry.sizeBytes,
+        buffer: fileEntry.originalFile?.buffer || fileEntry.buffer,
+      };
 
       // Usar configuración específica del archivo o defaultConfig como fallback
       const config = {
-        channelId: fileItem.channelId || channelId,
-        securityLevelId: fileItem.securityLevelId || securityLevelId,
-        routeRuleId: fileItem.routeRuleId || routeRuleId,
-        emissionDate: fileItem.emissionDate || emissionDate,
-        expirationDate: fileItem.expirationDate || expirationDate,
+        channelId,
+        documentTypeId,
+        securityLevelId,
+        routeRuleId: fileEntry.routeRuleId,
+        emissionDate,
+        expirationDate,
+        routePath: fileEntry.routePath,
       };
 
       // Desestructurar fileInfo
@@ -204,13 +205,10 @@ export const uploadMultipleFiles = async (req, res) => {
       const md5 = calculateMD5(buffer);
 
       // Verificar si el archivo ya existe
-      const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(
-        md5,
-        config.routeRuleId
-      );
+      const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(md5, config.routeRuleId);
 
       if (fileExists) {
-        const fullRoutePath = `${routePath}/${fileExists.fileName}`;
+        const fullRoutePath = `${config.routePath}/${fileExists.fileName}`;
         const fileUrl = buildFileUrl(fullRoutePath);
 
         duplicateFiles.push({
@@ -237,9 +235,9 @@ export const uploadMultipleFiles = async (req, res) => {
       const ext = path.extname(cleanName);
       const baseName = path.basename(cleanName, ext);
       const fileNameWithCode = `${baseName}-${codeFile}${ext}`;
-      const routeWithFileNameAndCode = `${routePath}/${fileNameWithCode}`;
+      const routeWithFileNameAndCode = `${config.routePath}/${fileNameWithCode}`;
       const fileUrl = buildFileUrl(routeWithFileNameAndCode);
-      const fullStoragePath = path.join(routePath, fileNameWithCode);
+      const fullStoragePath = path.join(config.routePath, fileNameWithCode);
 
       processedFiles.push({
         config,
@@ -249,7 +247,7 @@ export const uploadMultipleFiles = async (req, res) => {
         fileUrl,
         fullStoragePath,
         index: i,
-        originalName: cleanName,
+        originalName: fileInfo.cleanName,
       });
     }
 

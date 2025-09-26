@@ -16,31 +16,60 @@ const fileConfig = {
   maxFieldSize: parseInt(process.env.MAX_FIELD_SIZE_KB || "1024") * 1024,
 };
 
-// Middleware genérico para subir
-const uploadSettings = (fieldName) => {
-  return (req, res, next) => {
-    const uploadHandler = multer({
-      storage,
-      limits: {
-        fileSize: fileConfig.maxFileSize, // Limite de tamaño para archivos binarios
-        files: fileConfig.maxFiles, // Cantidad maxima de archivos
-        fieldNameSize: fileConfig.maxFilenameLength, // Longitud maxima del nombre del campo
-        fieldSize: fileConfig.maxFieldSize, // Limite para archivos de texto
-      },
-      fileFilter: (_, file, cb) => {
-        try {
-          if (!file) {
-            return cb(new Error("No se recibió ningún archivo"));
-          }
-          // sanitizamos el nombre
-          file.originalname = sanitizeFileName(file.originalname, fileConfig.maxFilenameLength);
-          cb(null, true);
-        } catch (error) {
-          cb(error);
-        }
-      },
-    }).array(fieldName, fileConfig.maxFiles);
+// Handlers específicos para single y multiple
+const commonMulterOptions = {
+  storage,
+  limits: {
+    files: fileConfig.maxFiles,
+    fieldNameSize: fileConfig.maxFilenameLength,
+    fieldSize: fileConfig.maxFieldSize,
+  },
+  fileFilter: (_, file, cb) => {
+    try {
+      if (!file) {
+        return cb(new Error("No se recibió ningún archivo"));
+      }
+      file.originalname = sanitizeFileName(
+        file.originalname,
+        fileConfig.maxFilenameLength
+      );
+      cb(null, true);
+    } catch (error) {
+      cb(error);
+    }
+  },
+};
 
+export const handleSingleFile = (fieldName) => {
+  return (req, res, next) => {
+    const uploadHandler = multer(commonMulterOptions).single(fieldName);
+    uploadHandler(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          message: "Error en la subida",
+          details: err.message,
+        });
+      }
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "No se recibió el archivo",
+          details: `Usa el campo '${fieldName}' en el formData`,
+        });
+      }
+      loggerGlobal.info(`Archivo recibido: ${req.file.originalname}`);
+      next();
+    });
+  };
+};
+
+export const handleMultipleFiles = (fieldName) => {
+  return (req, res, next) => {
+    const uploadHandler = multer(commonMulterOptions).array(
+      fieldName,
+      fileConfig.maxFiles
+    );
     uploadHandler(req, res, (err) => {
       if (err) {
         return res.status(400).json({
@@ -56,14 +85,8 @@ const uploadSettings = (fieldName) => {
           details: `Usa el campo '${fieldName}' en el formData`,
         });
       }
-
       loggerGlobal.info(`Archivos recibidos: ${req.files.length}`);
       next();
     });
   };
 };
-
-export const handleSingleFile = (fieldName) =>
-  uploadSettings(fieldName);
-export const handleMultipleFiles = (fieldName) =>
-  uploadSettings(fieldName);

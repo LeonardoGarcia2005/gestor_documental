@@ -1,7 +1,7 @@
 import { loggerGlobal } from "../logging/loggerManager.js";
 import { dbConnectionProvider } from "../config/db/dbConnectionManager.js";
 
-const getRouteRuleBySecurityAndCompany = async (finalValues) => {
+const getRouteRuleBySecurityAndCompany = async (finalValues, httpMethod) => {
   try {
 
     const queryParameters = `
@@ -18,18 +18,20 @@ const getRouteRuleBySecurityAndCompany = async (finalValues) => {
       JOIN route_rule rr ON rrp.route_rule_id = rr.id
       WHERE rr.security_level_type = $1 
         AND rr.company_required = $2
-        AND rr.is_multi_file = $3
+        AND rr.is_for_multi_file = $3
+        AND rr.http_method = $4
+        AND rr.type_of_file = $5
         AND rr.status = TRUE
         AND rrp.status = TRUE
         AND rp.status = TRUE
       ORDER BY rrp.position_order
     `;
 
-    const values = [finalValues.securityLevel, finalValues.hasCompany, finalValues.hasManyFiles];
+    const values = [finalValues.securityLevel, finalValues.hasCompany, finalValues.isForMultiFile, httpMethod, finalValues.typeOfFile];
     const routeParameters = await dbConnectionProvider.getAll(queryParameters, values);
 
     if (!routeParameters || routeParameters.length === 0) {
-      throw new Error(`No se encontró una regla de ruta para securityLevel: ${finalValues.securityLevel}, hasCompany: ${finalValues.hasCompany}, hasManyFile: ${finalValues.hasManyFiles}`);
+      throw new Error(`No se encontró una regla de ruta para securityLevel: ${finalValues.securityLevel}, hasCompany: ${finalValues.hasCompany}, hasManyFile: ${finalValues.isForMultiFile}`);
     }
 
     return routeParameters

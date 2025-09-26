@@ -3,6 +3,8 @@ import {
   documentTypes,
   securityLevels,
   fileExtensions,
+  deviceTypes,
+  fileTypes,
 } from "../dataAccessObjects/enumDAO.js";
 import BaseJoi from "joi";
 import JoiDate from "@joi/date";
@@ -25,6 +27,10 @@ const EXTENSION_MIME_MAP = {
   mp4: "video/mp4",
   mp3: "audio/mpeg",
 };
+
+const typesExcluded = fileTypes.filter(
+  (type) => type !== "video" && type !== "audio"
+);
 
 // Validador personalizado para archivos con validación de seguridad
 const secureFileValidator = async (value, helpers) => {
@@ -144,6 +150,9 @@ const baseFileSchema = {
 // Esquema para archivo único
 export const createSingleFileSchema = Joi.object({
   ...baseFileSchema,
+  typeOfFile: Joi.string()
+    .valid(...fileTypes)
+    .required(),
   file: Joi.any().custom(secureFileValidator).required().messages({
     "file.required": "El archivo es requerido",
     "file.invalidSignature":
@@ -158,6 +167,9 @@ export const createSingleFileSchema = Joi.object({
 // Esquema para múltiples archivos
 export const createMultipleFilesSchema = Joi.object({
   ...baseFileSchema,
+  typeOfFile: Joi.string()
+    .valid(...typesExcluded)
+    .required(),
   filesData: Joi.array()
     .items(
       Joi.object({

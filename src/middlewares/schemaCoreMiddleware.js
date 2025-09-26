@@ -3,23 +3,27 @@ import { loggerGlobal } from "../logging/loggerManager.js";
 export const validateSchema = (schema) => {
   return (req, res, next) => {
     try {
-      const mappedFiles = req.files
-        ? req.files.map((file) => {
-            return { file: file };
-          })
-        : [];
+      let data = { ...req.body };
 
-      const data = {
-        ...req.body,
-        file: req.files[0],
-        files: mappedFiles,
-      };
+      // Determinar si es archivo único o múltiples archivos
+      if (req.file) {
+        // Archivo único
+        data.file = req.file;
+      } else if (req.files && req.files.length > 0) {
+        // Múltiples archivos
+        const deviceTypesArray = req.body.deviceType 
+          ? req.body.deviceType.split(',').map(type => type.trim())
+          : [];
 
-      // Solo validar el body directamente, no un objeto anidado
+        data.filesData = req.files.map((file, index) => ({
+          file,
+          deviceType: deviceTypesArray[index] || null,
+        }));
+      }
+
       const { error, value } = schema.validate(data, {
         abortEarly: false,
-        allowUnknown: true, // Permitir campos adicionales como 'file'
-        stripUnknown: false, // No eliminar campos desconocidos
+        allowUnknown: true,
       });
 
       if (error) {
