@@ -70,7 +70,7 @@ export const applyRouteRule = async (req, res, next) => {
           ...(original.resolution ? { resolution: original.resolution } : {}),
         };
 
-        const routePath = buildRoutePath(routeParameters, fileSpecificValues);
+        const { routePath, routeParameterValues } = buildRoutePathWithParameters(routeParameters, fileSpecificValues);
 
         return {
           ...original,
@@ -79,6 +79,7 @@ export const applyRouteRule = async (req, res, next) => {
           routePath,
           routeRuleId: routeParameters[0].route_rule_id,
           originalFile: fileData.file,
+          routeParameterValues, // Agregar los valores de parámetros para cada archivo
           ...(original.resolution
             ? { dimensions: { resolution: original.resolution } }
             : {}),
@@ -88,6 +89,9 @@ export const applyRouteRule = async (req, res, next) => {
       // Guardar resultados enriquecidos en el request
       req.processedFiles = enrichedFiles;
       req.processedFilesRoutes = enrichedFiles.map((f) => f.routePath);
+      
+      // Para múltiples archivos, guardar todos los route_parameter_values en un array
+      req.route_parameter_values = enrichedFiles.map(f => f.routeParameterValues);
     } else {
       // Archivo único
       const singleFileValues = {
@@ -95,10 +99,11 @@ export const applyRouteRule = async (req, res, next) => {
       };
 
       // Construir ruta para archivo único
-      const routePath = buildRoutePath(routeParameters, singleFileValues);
+      const { routePath, routeParameterValues } = buildRoutePathWithParameters(routeParameters, singleFileValues);
 
       req.routePath = routePath;
       req.routeRuleId = routeParameters[0].route_rule_id;
+      req.route_parameter_values = routeParameterValues; // Agregar valores de parámetros para archivo único
     }
 
     // Datos comunes para ambos casos
@@ -116,13 +121,18 @@ export const applyRouteRule = async (req, res, next) => {
 };
 
 // Construye la ruta basada en los parámetros de ruta y valores específicos
-const buildRoutePath = (routeParameters, values) => {
+// Ahora también retorna los route_parameter_values
+const buildRoutePathWithParameters = (routeParameters, values) => {
   const separator = routeParameters[0].separator_char || "/";
   const routeParts = [];
   const dynamicValues = {};
+  const routeParameterValues = [];
+
+  // Ordenar parámetros por position_order para asegurar el orden correcto
+  const sortedParameters = routeParameters.sort((a, b) => a.position_order - b.position_order);
 
   // Pre-calcular valores dinámicos
-  for (const param of routeParameters) {
+  for (const param of sortedParameters) {
     if (!param.default_value || param.default_value === "") {
       dynamicValues[param.parameter_key] = getParameterValue(
         param.parameter_key,
@@ -131,8 +141,8 @@ const buildRoutePath = (routeParameters, values) => {
     }
   }
 
-  // Construir partes de la ruta
-  for (const param of routeParameters) {
+  // Construir partes de la ruta y crear route_parameter_values
+  for (const param of sortedParameters) {
     let paramValue = null;
 
     if (param.default_value !== null && param.default_value !== "") {
@@ -150,7 +160,23 @@ const buildRoutePath = (routeParameters, values) => {
     if (paramValue) {
       routeParts.push(paramValue);
     }
+
+    // Agregar al array de route_parameter_values (incluso si paramValue es vacío)
+    routeParameterValues.push({
+      route_parameter_id: parseInt(param.route_parameter_id),
+      position_order: param.position_order,
+      value: paramValue || '' // Si no hay valor, usar string vacío
+    });
   }
 
-  return routeParts.join(separator);
+  return {
+    routePath: routeParts.join(separator),
+    routeParameterValues
+  };
+};
+
+// Mantener la función original por compatibilidad (si se usa en otros lugares)
+const buildRoutePath = (routeParameters, values) => {
+  const { routePath } = buildRoutePathWithParameters(routeParameters, values);
+  return routePath;
 };

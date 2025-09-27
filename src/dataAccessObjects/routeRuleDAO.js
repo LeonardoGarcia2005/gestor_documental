@@ -6,7 +6,8 @@ const getRouteRuleBySecurityAndCompany = async (finalValues, httpMethod) => {
 
     const queryParameters = `
       SELECT
-        rr.id as route_rule_id,
+        rr.id AS route_rule_id,
+        rp.id AS route_parameter_id,
         rp.parameter_key,
         rp.name,
         rrp.default_value,
