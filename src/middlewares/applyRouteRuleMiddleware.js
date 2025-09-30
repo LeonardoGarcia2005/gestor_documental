@@ -54,8 +54,6 @@ export const applyRouteRule = async (req, res, next) => {
 
     // Procesar rutas según el tipo
     if (isForMultiFile) {
-      // Si es multiples archivos remover el file del baseValues
-      delete baseValues.file;
       // Múltiples archivos
       const originalProcessed = Array.isArray(req.processedFiles)
         ? req.processedFiles
