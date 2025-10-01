@@ -1,6 +1,7 @@
 import { loggerGlobal } from "../logging/loggerManager.js";
 import { dbConnectionProvider } from "../config/db/dbConnectionManager.js";
 
+// Consulta parametrizada para obtener archivo por md5 y route_rule_id
 const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
   try {
     // Consulta parametrizada para evitar inyección SQL
@@ -34,6 +35,38 @@ const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
   }
 };
 
+// Consulta parametrizada para obtener archivos por md5 y route_rule_id
+const getFilesByMd5AndRouteRuleIds = async (md5Hashes, routeRuleIds) => {
+  try {
+    const queryFiles = `
+      SELECT 
+        f.id,
+        file_name AS "fileName", 
+        code AS "codeFile", 
+        dt.name AS "documentType", 
+        document_emission_date AS "emissionDate", 
+        document_expiration_date AS "expirationDate",
+        sl.type AS "securityLevel",
+        f.route_rule_id AS "routeRuleId",
+        f.file_hash_md5 AS "md5"
+      FROM file AS f
+      JOIN document_type dt ON f.document_type_id = dt.id
+      JOIN security_level sl ON f.security_level_id = sl.id
+      WHERE f.file_hash_md5 = ANY($1::text[]) 
+        AND f.route_rule_id = ANY($2::int[]) 
+        AND f.status = TRUE
+    `;
+
+    const values = [md5Hashes, routeRuleIds];
+    const resultFiles = await dbConnectionProvider.getAll(queryFiles, values);
+
+    return resultFiles || [];
+  } catch (err) {
+    loggerGlobal.error(`Error al obtener los archivos`, err);
+    throw new Error("Error al obtener los archivos, intenta nuevamente");
+  }
+};
+
 const insertFile = async (
   companyId,
   documentTypeId,
@@ -52,19 +85,6 @@ const insertFile = async (
   t
 ) => {
   try {
-    // Validar que si no viene la fecha de emision ni de expiracion colocar unas por defecto
-    const formatDate = (date) => date.toISOString().split("T")[0]; // Formatear la fecha a YYYY-MM-DD
-
-    if (!documentEmissionDate) {
-      documentEmissionDate = formatDate(new Date());
-    }
-
-    if (!documentExpirationDate) {
-      const expiration = new Date();
-      expiration.setFullYear(expiration.getFullYear() + 1);
-      documentExpirationDate = formatDate(expiration);
-    }
-
     // Construcción del objeto con los valores para la inserción
     const values = {
       company_id: companyId,
@@ -121,9 +141,9 @@ const insertFile = async (
   }
 };
 
-export const changeStatusFile = async (codeFile, isActive) => {
+const changeStatusFile = async (codeFile, isActive) => {
   try {
-    
+
     const result = await dbConnectionProvider.updateOne(
       "file",
       { is_used: isActive },
@@ -143,10 +163,41 @@ export const changeStatusFile = async (codeFile, isActive) => {
   }
 };
 
+const insertFileVariant = async (main_file_id, variant_file_id, resolution, device_type, is_main, t) => {
+  try {
+    const values = {
+      main_file_id,
+      variant_file_id,
+      resolution,
+      device_type,
+      is_main,
+      creation_date: new Date(),
+      status: true,
+    };
+
+    const result = await dbConnectionProvider.insertOne("file_variant", values, t);
+
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al insertar variante en base de datos", {
+      error: error.message,
+      stack: error.stack,
+      file_id,
+      variant_file_id,
+      resolution,
+      device_type,
+      is_main,
+    });
+    throw new Error(`Error al insertar variante: ${error.message}`);
+  }
+}
+
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
+  getFilesByMd5AndRouteRuleIds,
   insertFile,
-  changeStatusFile
+  changeStatusFile,
+  insertFileVariant
 };
 
 export { filesDAO };

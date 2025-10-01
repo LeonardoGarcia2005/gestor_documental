@@ -23,11 +23,6 @@ export const normalizeCompanyName = (companyName) => {
     .slice(0, 100); // Limita a 100 caracteres máximo
 };
 
-export const formatDate = (date) => {
-  if (!date) return null;
-  return date.toISOString().split("T")[0];
-};
-
 // Sanitizar nombre
 export const sanitizeFileName = (filename, maxFilenameLength) => {
   const ext = path.extname(filename);
@@ -45,3 +40,21 @@ export const sanitizeFileName = (filename, maxFilenameLength) => {
 
   return `${truncatedName}${ext.toLowerCase()}`;
 };
+
+export const normalizeDate = (date, fallbackYears = 0) => {
+  if (!date) {
+    const d = new Date();
+    if (fallbackYears) d.setFullYear(d.getFullYear() + fallbackYears);
+    return d.toISOString().split("T")[0]; // siempre YYYY-MM-DD
+  }
+
+  const d = new Date(date); // convierte string a Date
+  if (isNaN(d)) {
+    const today = new Date();
+    if (fallbackYears) today.setFullYear(today.getFullYear() + fallbackYears);
+    return today.toISOString().split("T")[0];
+  }
+
+  return d.toISOString().split("T")[0];
+};
+

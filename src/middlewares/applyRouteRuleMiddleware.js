@@ -89,7 +89,7 @@ export const applyRouteRule = async (req, res, next) => {
       req.processedFilesRoutes = enrichedFiles.map((f) => f.routePath);
       
       // Para múltiples archivos, guardar todos los route_parameter_values en un array
-      req.route_parameter_values = enrichedFiles.map(f => f.routeParameterValues);
+      req.routeParameterValues = enrichedFiles.map(f => f.routeParameterValues);
     } else {
       // Archivo único
       const singleFileValues = {
@@ -101,7 +101,7 @@ export const applyRouteRule = async (req, res, next) => {
 
       req.routePath = routePath;
       req.routeRuleId = routeParameters[0].route_rule_id;
-      req.route_parameter_values = routeParameterValues; // Agregar valores de parámetros para archivo único
+      req.routeParameterValues = routeParameterValues; // Agregar valores de parámetros para archivo único
     }
 
     // Datos comunes para ambos casos

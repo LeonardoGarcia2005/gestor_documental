@@ -4,14 +4,14 @@ import calculateMD5 from "../../lib/calculateMD5.js";
 import { filesDAO } from "../../dataAccessObjects/filesDAO.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
 import { generateCodeFile } from "../../lib/generators.js";
-import { formatDate } from "../../lib/formatters.js";
+import { normalizeDate } from "../../lib/formatters.js";
 import {
   saveFileFromBuffer,
-  saveMultipleFilesFromBuffer,
 } from "../../services/fileSystem.js";
 import { dbConnectionProvider } from "../../config/db/dbConnectionManager.js";
 import { buildFileUrl } from "../../lib/builder.js";
 import { securityLevels } from "../../dataAccessObjects/enumDAO.js";
+import { fileParameterValueDAO } from "../../dataAccessObjects/fileParameterValueDAO.js";
 
 export const uploadSingleFile = async (req, res) => {
   let responseData = null;
@@ -26,14 +26,18 @@ export const uploadSingleFile = async (req, res) => {
       routeRuleId,
       securityLevelId,
       fileInfo,
+      routeParameterValues
     } = req;
 
     // Desestructuramos el fileInfo
     const { cleanName, extensionId, sizeBytes, buffer } = fileInfo;
 
-    // Obtener los valores de la fecha de emisión y cuando se expira (formato YYYY-MM-DD)
-    const { emissionDate, expirationDate, documentType, securityLevel } =
-      req.body;
+    // Obtener y normalizar las fechas de emisión y expiración
+    const { emissionDate, expirationDate, documentType, securityLevel } = req.body;
+    
+    // Normalizar fechas: si no vienen del frontend, se generan por defecto
+    const defaultEmissionDate = normalizeDate(emissionDate);
+    const defaultExpirationDate = normalizeDate(expirationDate, 1);
 
     const md5 = calculateMD5(buffer);
 
@@ -57,14 +61,14 @@ export const uploadSingleFile = async (req, res) => {
         details: {
           ...(securityLevel === publicLevel
             ? {
-                fileUrl: fileUrl,
-              }
+              fileUrl: fileUrl,
+            }
             : {
-                fileName: fileExists.fileName,
-              }),
+              fileName: fileExists.fileName,
+            }),
           codeFile: fileExists.codeFile,
-          emissionDate: formatDate(fileExists.emissionDate),
-          expirationDate: formatDate(fileExists.expirationDate),
+          emissionDate: fileExists.emissionDate,
+          expirationDate: fileExists.expirationDate,
           documentType: fileExists.documentType,
           securityLevel: fileExists.securityLevel,
         },
@@ -102,12 +106,18 @@ export const uploadSingleFile = async (req, res) => {
         false, // is_used
         routeRuleId,
         fileNameWithCode,
-        emissionDate,
-        expirationDate,
+        defaultEmissionDate,
+        defaultExpirationDate,
         false, // hasVariants
         sizeBytes,
         md5,
         t // pasar la transacción
+      );
+
+      await fileParameterValueDAO.insertFileParameterValue(
+        fileInserted.id,
+        routeParameterValues,
+        t
       );
 
       // Preparar datos de respuesta
@@ -117,14 +127,14 @@ export const uploadSingleFile = async (req, res) => {
         details: {
           ...(securityLevel === publicLevel
             ? {
-                fileUrl,
-              }
+              fileUrl,
+            }
             : {
-                fileName: fileNameWithCode,
-              }),
+              fileName: fileNameWithCode,
+            }),
           codeFile: fileInserted.code,
-          emissionDate: formatDate(fileInserted.document_emission_date),
-          expirationDate: formatDate(fileInserted.document_expiration_date),
+          emissionDate: fileInserted.document_emission_date,
+          expirationDate: fileInserted.document_expiration_date,
           securityLevel,
           documentType,
         },
@@ -156,192 +166,6 @@ export const uploadSingleFile = async (req, res) => {
 
     return res.status(500).json({
       error: "Error procesando el archivo",
-      details: error.message,
-    });
-  }
-};
-
-export const uploadMultipleFiles = async (req, res) => {
-  let createdFiles = [];
-  let responseData = null;
-
-  try {
-    const { securityContext, securityLevelId, channelId, documentTypeId } = req;
-    const { documentType, securityLevel, expirationDate, emissionDate, metadata } = req.body;
-    const files = Array.isArray(req.processedFiles) ? req.processedFiles : [];
-
-    // Evaluar el tipo de seguridad para determinar si retornar URLs
-    const publicLevel = securityLevels.find((level) =>
-      level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
-    );
-
-    const processedFiles = [];
-    const duplicateFiles = [];
-
-    // Procesar cada archivo
-    for (let i = 0; i < files.length; i++) {
-      const fileEntry = files[i];
-      const fileInfo = {
-        cleanName: fileEntry.cleanName,
-        extensionId: fileEntry.extensionId,
-        sizeBytes: fileEntry.sizeBytes,
-        buffer: fileEntry.originalFile?.buffer || fileEntry.buffer,
-      };
-
-      // Usar configuración específica del archivo o defaultConfig como fallback
-      const config = {
-        channelId,
-        documentTypeId,
-        securityLevelId,
-        routeRuleId: fileEntry.routeRuleId,
-        emissionDate,
-        expirationDate,
-        routePath: fileEntry.routePath,
-      };
-
-      // Desestructurar fileInfo
-      const { cleanName, extensionId, sizeBytes, buffer } = fileInfo;
-
-      const md5 = calculateMD5(buffer);
-
-      // Verificar si el archivo ya existe
-      const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(md5, config.routeRuleId);
-
-      if (fileExists) {
-        const fullRoutePath = `${config.routePath}/${fileExists.fileName}`;
-        const fileUrl = buildFileUrl(fullRoutePath);
-
-        duplicateFiles.push({
-          index: i,
-          originalName: cleanName,
-          details: {
-            ...(securityLevel === publicLevel
-              ? { fileUrl }
-              : { fileName: fileExists.fileName }),
-            codeFile: fileExists.codeFile,
-            emissionDate: formatDate(fileExists.emissionDate),
-            expirationDate: formatDate(fileExists.expirationDate),
-            documentType: fileExists.documentType,
-            securityLevel: fileExists.securityLevel,
-          },
-        });
-        continue;
-      }
-
-      // Generar código único para el archivo
-      const codeFile = generateCodeFile();
-
-      // Procesar nombre del archivo
-      const ext = path.extname(cleanName);
-      const baseName = path.basename(cleanName, ext);
-      const fileNameWithCode = `${baseName}-${codeFile}${ext}`;
-      const routeWithFileNameAndCode = `${config.routePath}/${fileNameWithCode}`;
-      const fileUrl = buildFileUrl(routeWithFileNameAndCode);
-      const fullStoragePath = path.join(config.routePath, fileNameWithCode);
-
-      processedFiles.push({
-        config,
-        fileInfo,
-        codeFile,
-        fileNameWithCode,
-        fileUrl,
-        fullStoragePath,
-        index: i,
-        originalName: fileInfo.cleanName,
-      });
-    }
-
-    // Ejecutar transacción para todos los archivos nuevos
-    if (processedFiles.length > 0) {
-      await dbConnectionProvider.tx(async (t) => {
-        for (const fileData of processedFiles) {
-          const { config, fileInfo, codeFile, fileNameWithCode } = fileData;
-
-          // Insertar archivo en la base de datos
-          const fileInserted = await filesDAO.insertFile(
-            securityContext.companyId ?? null,
-            config.documentTypeId,
-            config.channelId,
-            config.securityLevelId,
-            fileInfo.extensionId,
-            codeFile,
-            false, // is_used
-            config.routeRuleId,
-            fileNameWithCode,
-            config.emissionDate,
-            config.expirationDate,
-            false, // hasVariants
-            fileInfo.sizeBytes,
-            calculateMD5(fileInfo.buffer),
-            t
-          );
-
-          // Actualizar datos con información de BD
-          fileData.dbResult = fileInserted;
-        }
-      });
-
-      // Si la transacción fue exitosa, guardar archivos físicos
-      const filesToSave = processedFiles.map((fileData) => ({
-        path: fileData.fullStoragePath,
-        buffer: fileData.fileInfo.buffer,
-      }));
-
-      await saveMultipleFilesFromBuffer(filesToSave);
-      createdFiles = processedFiles.map((f) => f.fullStoragePath);
-    }
-
-    // Preparar respuesta
-    const successfulUploads = processedFiles.map((fileData) => ({
-      index: fileData.index,
-      originalName: fileData.originalName,
-      details: {
-        ...(securityLevel === publicLevel
-          ? { fileUrl: fileData.fileUrl }
-          : { fileName: fileData.fileNameWithCode }),
-        codeFile: fileData.dbResult.code,
-        emissionDate: formatDate(fileData.dbResult.document_emission_date),
-        expirationDate: formatDate(fileData.dbResult.document_expiration_date),
-        securityLevel,
-        documentType,
-      },
-    }));
-
-    responseData = {
-      success: true,
-      message: `Procesados ${files.length} archivos`,
-      summary: {
-        total: files.length,
-        uploaded: successfulUploads.length,
-        duplicates: duplicateFiles.length,
-      },
-      results: {
-        uploaded: successfulUploads,
-        duplicates: duplicateFiles,
-      },
-    };
-
-    return res.status(201).json(responseData);
-  } catch (error) {
-    loggerGlobal.error("Error en uploadMultipleFiles:", error);
-
-    // Limpiar archivos físicos creados en caso de error
-    if (createdFiles.length > 0) {
-      for (const filePath of createdFiles) {
-        try {
-          await fs.unlink(filePath);
-          loggerGlobal.info(`Archivo físico eliminado tras error: ${filePath}`);
-        } catch (cleanupError) {
-          loggerGlobal.error(
-            `Error eliminando archivo físico tras fallo: ${filePath}`,
-            cleanupError
-          );
-        }
-      }
-    }
-
-    return res.status(500).json({
-      error: "Error procesando los archivos",
       details: error.message,
     });
   }
