@@ -67,6 +67,39 @@ const getFilesByMd5AndRouteRuleIds = async (md5Hashes, routeRuleIds) => {
   }
 };
 
+const getUnusedFiles = async () => {
+  try {
+    // Calculamos la fecha límite (3 días atrás)
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - Number(process.env.FILE_EXPIRATION_DAYS));
+
+    // Formatear la fecha para PostgreSQL (formato ISO)
+    const formatteddate = threeDaysAgo.toISOString();
+
+    const query = `
+      SELECT fi.id, fi.code, fi.url, slv.type, fi.creation_date
+      FROM "file" as fi
+      JOIN security_level as slv ON fi.security_level_id = slv.id
+      WHERE fi.status = TRUE 
+        AND fi.is_active = FALSE 
+        AND fi.creation_date < '${formatteddate}';
+    `;
+
+    // Pasar la fecha como parámetro para evitar inyección SQL
+    const files = await dbConnectionProvider.getAll(query, [formatteddate]);
+    let filescodigos = files
+      .map((b) => b.code)
+      .filter(Boolean);
+    console.log(JSON.stringify(filescodigos))
+    return files === null ? [] : files;
+  } catch (error) {
+    loggerGlobal.error("Error en getUnusedFiles:", error.message);
+    throw new Error(
+      "Error al obtener los archivos sin usar. Por favor, intente de nuevo."
+    );
+  }
+};
+
 const insertFile = async (
   companyId,
   documentTypeId,
@@ -141,28 +174,6 @@ const insertFile = async (
   }
 };
 
-const changeStatusFile = async (codeFile, isActive) => {
-  try {
-
-    const result = await dbConnectionProvider.updateOne(
-      "file",
-      { is_used: isActive },
-      null,
-      { code: codeFile }
-    );
-
-    return result;
-  } catch (error) {
-    loggerGlobal.error("Error al cambiar el estado en el archivo", {
-      error: error.message,
-      stack: error.stack,
-      codeFile,
-      isActive,
-    });
-    throw new Error(`Error al cambiar el estado en el archivo: ${error.message}`);
-  }
-};
-
 const insertFileVariant = async (main_file_id, variant_file_id, resolution, device_type, is_main, t) => {
   try {
     const values = {
@@ -191,6 +202,28 @@ const insertFileVariant = async (main_file_id, variant_file_id, resolution, devi
     throw new Error(`Error al insertar variante: ${error.message}`);
   }
 }
+
+const changeStatusFile = async (codeFile, isActive) => {
+  try {
+
+    const result = await dbConnectionProvider.updateOne(
+      "file",
+      { is_used: isActive },
+      null,
+      { code: codeFile }
+    );
+
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al cambiar el estado en el archivo", {
+      error: error.message,
+      stack: error.stack,
+      codeFile,
+      isActive,
+    });
+    throw new Error(`Error al cambiar el estado en el archivo: ${error.message}`);
+  }
+};
 
 const filesDAO = {
   getFileByMd5AndRouteRuleId,

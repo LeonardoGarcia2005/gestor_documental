@@ -116,6 +116,7 @@ export const uploadSingleFile = async (req, res) => {
 
       await fileParameterValueDAO.insertFileParameterValue(
         fileInserted.id,
+        routeRuleId,
         routeParameterValues,
         t
       );

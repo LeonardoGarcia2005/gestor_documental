@@ -173,6 +173,7 @@ export const uploadMultipleFiles = async (req, res) => {
                     loggerGlobal.debug(`Insertando ${mainFileData.routeParameterValues.length} parámetros de ruta`);
                     await fileParameterValueDAO.insertFileParameterValue(
                         mainFileInserted.id,
+                        mainFileData.config.routeRuleId,
                         mainFileData.routeParameterValues,
                         t
                     );
@@ -217,6 +218,7 @@ export const uploadMultipleFiles = async (req, res) => {
                         if (variantFile.routeParameterValues?.length > 0) {
                             await fileParameterValueDAO.insertFileParameterValue(
                                 variantInserted.id,
+                                variantFile.config.routeRuleId,
                                 variantFile.routeParameterValues,
                                 t
                             );
