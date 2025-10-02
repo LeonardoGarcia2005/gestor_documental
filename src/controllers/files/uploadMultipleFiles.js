@@ -11,7 +11,7 @@ import { saveMultipleFilesFromBuffer } from "../../services/fileSystem.js";
 import { generateCodeFile } from "../../lib/generators.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
 
-export const uploadMultipleFiles = async (req, res) => {
+export const uploadMultipleVariantsFiles = async (req, res) => {
     let createdFiles = [];
     let responseData = null;
 
@@ -65,9 +65,6 @@ export const uploadMultipleFiles = async (req, res) => {
             };
         });
 
-        loggerGlobal.info(`Archivos preparados: ${preparedFiles.length}`);
-        loggerGlobal.debug(`Primer archivo MD5: ${preparedFiles[0]?.md5}`);
-
         const routeRuleIds = [...new Set(preparedFiles.map(f => f.config.routeRuleId))];
         const md5Hashes = preparedFiles.map(f => f.md5);
 
@@ -112,9 +109,6 @@ export const uploadMultipleFiles = async (req, res) => {
             }
         });
 
-        loggerGlobal.info(`Nuevos archivos a insertar: ${newFiles.length}`);
-        loggerGlobal.info(`Archivos duplicados: ${duplicateFiles.length}`);
-
         const uploadedFiles = [];
 
         if (newFiles.length > 0) {
@@ -139,12 +133,8 @@ export const uploadMultipleFiles = async (req, res) => {
                 };
             });
 
-            loggerGlobal.info('Iniciando transacción de base de datos...');
-
             await dbConnectionProvider.tx(async (t) => {
                 const mainFileData = filesWithMetadata[0];
-
-                loggerGlobal.debug(`Insertando archivo principal: ${mainFileData.fileNameWithCode}`);
 
                 const mainFileInserted = await filesDAO.insertFile(
                     securityContext.companyId ?? null,
@@ -164,13 +154,10 @@ export const uploadMultipleFiles = async (req, res) => {
                     t
                 );
 
-                loggerGlobal.info(`Archivo principal insertado con ID: ${mainFileInserted.id}`);
-
                 mainFileData.dbResult = mainFileInserted;
                 mainFileData.mainFileId = mainFileInserted.id;
 
                 if (mainFileData.routeParameterValues?.length > 0) {
-                    loggerGlobal.debug(`Insertando ${mainFileData.routeParameterValues.length} parámetros de ruta`);
                     await fileParameterValueDAO.insertFileParameterValue(
                         mainFileInserted.id,
                         mainFileData.config.routeRuleId,
@@ -179,7 +166,6 @@ export const uploadMultipleFiles = async (req, res) => {
                     );
                 }
 
-                loggerGlobal.debug('Insertando variante principal');
                 await filesDAO.insertFileVariant(
                     mainFileInserted.id,
                     mainFileInserted.id,
@@ -190,11 +176,7 @@ export const uploadMultipleFiles = async (req, res) => {
                 );
 
                 if (filesWithMetadata.length > 1) {
-                    loggerGlobal.info(`Insertando ${filesWithMetadata.length - 1} variantes adicionales`);
-
                     const variantInsertPromises = filesWithMetadata.slice(1).map(async (variantFile, idx) => {
-                        loggerGlobal.debug(`Insertando variante ${idx + 1}: ${variantFile.fileNameWithCode}`);
-
                         const variantInserted = await filesDAO.insertFile(
                             securityContext.companyId ?? null,
                             variantFile.config.documentTypeId,
@@ -238,18 +220,14 @@ export const uploadMultipleFiles = async (req, res) => {
 
                     await Promise.all(variantInsertPromises);
                 }
-
-                loggerGlobal.info('Transacción completada exitosamente');
             });
 
             const filesToSave = filesWithMetadata.map(file => ({
-                path: file.fullStoragePath,
+                filePath: file.fullStoragePath,
                 buffer: file.buffer,
             }));
 
-            loggerGlobal.info(`Guardando ${filesToSave.length} archivos en el sistema de archivos`);
             await saveMultipleFilesFromBuffer(filesToSave);
-            loggerGlobal.info('Archivos guardados exitosamente');
 
             createdFiles = filesWithMetadata.map(f => f.fullStoragePath);
 
@@ -312,3 +290,221 @@ export const uploadMultipleFiles = async (req, res) => {
         });
     }
 };
+
+export const uploadMultipleDistinctFiles = async (req, res) => {
+    let createdFiles = [];
+
+    try {
+        const { securityContext, securityLevelId, channelId, documentTypeId } = req;
+        const { securityLevel } = req.body;
+        const files = Array.isArray(req.processedFiles) ? req.processedFiles : [];
+
+        if (files.length === 0) {
+            return res.status(400).json({
+                error: "No se proporcionaron archivos para procesar",
+            });
+        }
+
+        const publicLevel = securityLevels.find((level) =>
+            level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
+        );
+
+        const preparedFiles = files.map((fileEntry, index) => {
+            const buffer = fileEntry.buffer || fileEntry.originalFile?.buffer;
+
+            if (!buffer) {
+                throw new Error(`No se encontró buffer para el archivo: ${fileEntry.cleanName}`);
+            }
+
+            const md5 = calculateMD5(buffer);
+
+            // Cada archivo puede tener sus propias fechas
+            const fileMetadata = req.body.filesMetadata?.[index] || {};
+            const emissionDate = normalizeDate(fileMetadata.emissionDate);
+            const expirationDate = normalizeDate(fileMetadata.expirationDate, 1);
+
+            return {
+                index,
+                originalName: fileEntry.cleanName,
+                cleanName: fileEntry.cleanName,
+                extensionId: fileEntry.extensionId,
+                sizeBytes: fileEntry.sizeBytes,
+                buffer,
+                md5,
+                config: {
+                    channelId,
+                    documentTypeId,
+                    securityLevelId,
+                    routeRuleId: fileEntry.routeRuleId,
+                    emissionDate,
+                    expirationDate,
+                    routePath: fileEntry.routePath,
+                },
+                routeParameterValues: fileEntry.routeParameterValues || [],
+            };
+        });
+
+        const routeRuleIds = [...new Set(preparedFiles.map(f => f.config.routeRuleId))];
+        const md5Hashes = preparedFiles.map(f => f.md5);
+
+        const existingFiles = await filesDAO.getFilesByMd5AndRouteRuleIds(md5Hashes, routeRuleIds);
+
+        const existingFilesMap = {};
+        for (const file of existingFiles) {
+            const key = `${file.md5}_${file.routeRuleId}`;
+            existingFilesMap[key] = file;
+        }
+
+        const newFiles = [];
+        const duplicateFiles = [];
+
+        for (const file of preparedFiles) {
+            const key = `${file.md5}_${file.config.routeRuleId}`;
+            const existingFile = existingFilesMap[key];
+
+            if (existingFile) {
+                const fullRoutePath = `${file.config.routePath}/${existingFile.fileName}`;
+                const fileUrl = buildFileUrl(fullRoutePath);
+
+                duplicateFiles.push({
+                    index: file.index,
+                    originalName: file.originalName,
+                    status: 'duplicate',
+                    details: {
+                        ...(securityLevel === publicLevel
+                            ? { fileUrl }
+                            : { fileName: existingFile.fileName }),
+                        codeFile: existingFile.codeFile,
+                        emissionDate: existingFile.emissionDate,
+                        expirationDate: existingFile.expirationDate,
+                        documentType: existingFile.documentType,
+                        securityLevel: existingFile.securityLevel,
+                    },
+                });
+            } else {
+                newFiles.push(file);
+            }
+        }
+
+        const uploadedFiles = [];
+
+        if (newFiles.length > 0) {
+            const filesWithMetadata = newFiles.map((file) => {
+                const codeFile = generateCodeFile();
+                const ext = path.extname(file.cleanName);
+                const baseName = path.basename(file.cleanName, ext);
+                const fileNameWithCode = `${baseName}-${codeFile}${ext}`;
+                const fullStoragePath = path.join(file.config.routePath, fileNameWithCode);
+                const fileUrl = buildFileUrl(`${file.config.routePath}/${fileNameWithCode}`);
+
+                return {
+                    ...file,
+                    codeFile,
+                    fileNameWithCode,
+                    fullStoragePath,
+                    fileUrl,
+                };
+            });
+
+            loggerGlobal.info('Iniciando transacción de base de datos para batch...');
+
+            await dbConnectionProvider.tx(async (t) => {
+                for (const file of filesWithMetadata) {
+                    loggerGlobal.debug(`Insertando archivo: ${file.fileNameWithCode}`);
+
+                    const fileInserted = await filesDAO.insertFile(
+                        securityContext.companyId ?? null,
+                        file.config.documentTypeId,
+                        file.config.channelId,
+                        file.config.securityLevelId,
+                        file.extensionId,
+                        file.codeFile,
+                        false, // is_used
+                        file.config.routeRuleId,
+                        file.fileNameWithCode,
+                        file.config.emissionDate,
+                        file.config.expirationDate,
+                        false, // has_variants (batch no tiene variantes)
+                        file.sizeBytes,
+                        file.md5,
+                        t
+                    );
+
+                    file.dbResult = fileInserted;
+
+                    // Insertar parámetros dinámicos
+                    if (file.routeParameterValues?.length > 0) {
+                        loggerGlobal.debug(`Insertando ${file.routeParameterValues.length} parámetros`);
+                        await fileParameterValueDAO.insertFileParameterValue(
+                            fileInserted.id,
+                            file.config.routeRuleId,
+                            file.routeParameterValues,
+                            t
+                        );
+                    }
+                }
+            });
+
+            const filesToSave = filesWithMetadata.map(file => ({
+                filePath: file.fullStoragePath,
+                buffer: file.buffer,
+            }));
+
+            await saveMultipleFilesFromBuffer(filesToSave);
+            loggerGlobal.info('Archivos guardados exitosamente');
+
+            createdFiles = filesWithMetadata.map(f => f.fullStoragePath);
+
+            uploadedFiles.push(...filesWithMetadata.map(file => ({
+                index: file.index,
+                originalName: file.originalName,
+                status: 'uploaded',
+                details: {
+                    ...(securityLevel === publicLevel
+                        ? { fileUrl: file.fileUrl }
+                        : { fileName: file.fileNameWithCode }),
+                    codeFile: file.codeFile,
+                    emissionDate: file.config.emissionDate,
+                    expirationDate: file.config.expirationDate,
+                },
+            })));
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: `Procesados ${files.length} archivos en modo batch`,
+            summary: {
+                total: files.length,
+                uploaded: uploadedFiles.length,
+                duplicates: duplicateFiles.length,
+            },
+            results: {
+                uploaded: uploadedFiles,
+                duplicates: duplicateFiles,
+            },
+        });
+
+    } catch (error) {
+        loggerGlobal.error("Error en uploadBatch:", error);
+        loggerGlobal.error("Stack trace:", error.stack);
+
+        if (createdFiles.length > 0) {
+            loggerGlobal.info(`Limpiando ${createdFiles.length} archivos por error`);
+            const cleanupPromises = createdFiles.map(async (filePath) => {
+                try {
+                    await fs.unlink(filePath);
+                    loggerGlobal.info(`Archivo físico eliminado: ${filePath}`);
+                } catch (cleanupError) {
+                    loggerGlobal.error(`Error eliminando archivo: ${filePath}`, cleanupError);
+                }
+            });
+
+            await Promise.allSettled(cleanupPromises);
+        }
+
+        return res.status(500).json({
+            error: "Error procesando archivos en batch",
+            details: error.message,
+        });
+    }
+}

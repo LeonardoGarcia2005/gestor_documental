@@ -6,10 +6,12 @@ import { determineSecurityContext } from "../middlewares/securityContextMiddlewa
 import { measureUploadTime } from "../middlewares/performanceMetricsMiddleware.js";
 import { applyRouteRule } from "../middlewares/applyRouteRuleMiddleware.js";
 import { uploadSingleFile } from "../controllers/files/uploadSingleFileController.js";
-import { uploadMultipleFiles } from "../controllers/files/uploadMultipleFiles.js";
+import { uploadMultipleVariantsFiles, uploadMultipleDistinctFiles } from "../controllers/files/uploadMultipleFiles.js";
 import { createSingleFileSchema, createMultipleFilesSchema } from "../schemas/uploadSchemas.js";
 import { changeStatusFileSchema } from "../schemas/changeStatusFileShema.js";
 import { changeStatusFile } from "../controllers/files/changeStatusFileController.js";
+import { searchFilesSchema } from "../schemas/searchFilesSchema.js"
+import { authenticateContext } from "../middlewares/authenticateMiddleware.js";
 
 const router = Router();
 
@@ -32,16 +34,42 @@ router.post(
   uploadSingleFile
 );
 
-// Endpoint para subir MÚLTIPLES archivos
+// Endpoint para subir MÚLTIPLES archivos que son iguales
 router.post(
-  "/upload/multiple",
+  "/upload/multiple/variants",
   handleMultipleFiles('files'),
   validateSchema(createMultipleFilesSchema),
   attachFileExtensions,
   determineSecurityContext,
   measureUploadTime,
   applyRouteRule,
-  uploadMultipleFiles
+  uploadMultipleVariantsFiles
+);
+
+// Endpoint para subir MÚLTIPLES archivos que son distintos
+router.post(
+  "/upload/multiple/distinct",
+  handleMultipleFiles('files'),
+  validateSchema(createMultipleFilesSchema),
+  attachFileExtensions,
+  determineSecurityContext,
+  measureUploadTime,
+  applyRouteRule,
+  uploadMultipleDistinctFiles
+);
+
+// Endpoint para obtener los archivos
+router.post(
+  "/files/public/search",
+  validateSchema(searchFilesSchema),
+  getPublicFiles
+);
+
+router.post(
+  "/files/private/search",
+  authenticateContext,
+  validateSchema(searchFilesSchema),
+  getPrivateFiles
 );
 
 export default router;

@@ -26,18 +26,17 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
     for (const { filePath, buffer, originalName } of fileData) {
       try {
         await saveFileFromBuffer(filePath, buffer);
-        savedFiles.push({ filePath, originalName, success: true });
+        savedFiles.push({ filePath, success: true });
         loggerGlobal.info(
-          `Archivo guardado exitosamente: ${originalName} -> ${filePath}`
+          `Archivo guardado exitosamente: ${filePath}`
         );
       } catch (error) {
         failedFiles.push({
           filePath,
-          originalName,
           error: error.message,
           success: false,
         });
-        loggerGlobal.error(`Error guardando archivo ${originalName}:`, error);
+        loggerGlobal.error(`Error guardando archivo ${filePath}:`, error);
       }
     }
 
@@ -47,14 +46,6 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
       await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
     }
 
-    return {
-      success: failedFiles.length === 0,
-      savedFiles,
-      failedFiles,
-      totalFiles: fileData.length,
-      successCount: savedFiles.length,
-      failureCount: failedFiles.length,
-    };
   } catch (error) {
     loggerGlobal.error("Error general guardando múltiples archivos:", error);
 

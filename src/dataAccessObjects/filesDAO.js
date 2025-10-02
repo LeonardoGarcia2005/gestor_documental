@@ -225,6 +225,25 @@ const changeStatusFile = async (codeFile, isActive) => {
   }
 };
 
+// Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
+const isPrivateFile = async (codes) => {
+  try {
+    const result = await dbConnectionProvider.getAll(
+      "file",
+      null,
+      { code: codes }
+    );
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al obtener el archivo", {
+      error: error.message,
+      stack: error.stack,
+      codes,
+    });
+    throw new Error(`Error al obtener el archivo: ${error.message}`);
+  }
+};
+
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
   getFilesByMd5AndRouteRuleIds,
