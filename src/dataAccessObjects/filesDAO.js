@@ -226,12 +226,23 @@ const changeStatusFile = async (codeFile, isActive) => {
 };
 
 // Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
-const isPrivateFile = async (codes) => {
+const existSomePrivateFile = async (codes) => {
   try {
+
+    const queryFile = `
+      SELECT 
+        f.id,
+        f.code,
+        f.company_id
+      FROM file AS f
+      WHERE f.code = ANY($1::text[]) AND f.company_id IS NOT NULL
+    `;
+
+    const values = [codes];
+
     const result = await dbConnectionProvider.getAll(
-      "file",
-      null,
-      { code: codes }
+      queryFile,
+      values
     );
     return result;
   } catch (error) {
@@ -249,7 +260,8 @@ const filesDAO = {
   getFilesByMd5AndRouteRuleIds,
   insertFile,
   changeStatusFile,
-  insertFileVariant
+  insertFileVariant,
+  existSomePrivateFile
 };
 
 export { filesDAO };

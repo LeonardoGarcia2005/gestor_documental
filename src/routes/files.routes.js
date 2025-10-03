@@ -11,7 +11,8 @@ import { createSingleFileSchema, createMultipleFilesSchema } from "../schemas/up
 import { changeStatusFileSchema } from "../schemas/changeStatusFileShema.js";
 import { changeStatusFile } from "../controllers/files/changeStatusFileController.js";
 import { searchFilesSchema } from "../schemas/searchFilesSchema.js"
-import { authenticateContext } from "../middlewares/authenticateMiddleware.js";
+import { validatePublicFiles } from "../middlewares/validatePublicFilesMiddleware.js";
+import { getPublicFiles } from "../controllers/files/getPublicFilesController.js";
 
 const router = Router();
 
@@ -62,14 +63,15 @@ router.post(
 router.post(
   "/files/public/search",
   validateSchema(searchFilesSchema),
+  validatePublicFiles,
   getPublicFiles
 );
 
-router.post(
+/* router.post(
   "/files/private/search",
   authenticateContext,
   validateSchema(searchFilesSchema),
   getPrivateFiles
-);
+); */
 
 export default router;
