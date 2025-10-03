@@ -12,6 +12,7 @@ import { dbConnectionProvider } from "../../config/db/dbConnectionManager.js";
 import { buildFileUrl } from "../../lib/builder.js";
 import { securityLevels } from "../../dataAccessObjects/enumDAO.js";
 import { fileParameterValueDAO } from "../../dataAccessObjects/fileParameterValueDAO.js";
+import { formatDate } from "../../lib/formatters.js";
 
 export const uploadSingleFile = async (req, res) => {
   let responseData = null;
@@ -134,8 +135,8 @@ export const uploadSingleFile = async (req, res) => {
               fileName: fileNameWithCode,
             }),
           codeFile: fileInserted.code,
-          emissionDate: fileInserted.document_emission_date,
-          expirationDate: fileInserted.document_expiration_date,
+          emissionDate: formatDate(fileInserted.document_emission_date),
+          expirationDate: formatDate(fileInserted.document_expiration_date),
           securityLevel,
           documentType,
         },

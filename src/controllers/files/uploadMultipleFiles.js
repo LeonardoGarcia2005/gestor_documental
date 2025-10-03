@@ -10,6 +10,7 @@ import { dbConnectionProvider } from "../../config/db/dbConnectionManager.js";
 import { saveMultipleFilesFromBuffer } from "../../services/fileSystem.js";
 import { generateCodeFile } from "../../lib/generators.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
+import { formatDate } from "../../lib/formatters.js";
 
 export const uploadMultipleVariantsFiles = async (req, res) => {
     let createdFiles = [];
@@ -240,8 +241,8 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                         ? { fileUrl: file.fileUrl }
                         : { fileName: file.fileNameWithCode }),
                     codeFile: file.codeFile,
-                    emissionDate: defaultEmissionDate,
-                    expirationDate: defaultExpirationDate,
+                    emissionDate: formatDate(defaultEmissionDate),
+                    expirationDate: formatDate(defaultExpirationDate),
                     securityLevel,
                     documentType,
                     deviceType: file.deviceType,
@@ -464,8 +465,8 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                         ? { fileUrl: file.fileUrl }
                         : { fileName: file.fileNameWithCode }),
                     codeFile: file.codeFile,
-                    emissionDate: file.config.emissionDate,
-                    expirationDate: file.config.expirationDate,
+                    emissionDate: formatDate(file.config.emissionDate),
+                    expirationDate: formatDate(file.config.expirationDate),
                 },
             })));
         }
