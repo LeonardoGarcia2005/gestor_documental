@@ -6,7 +6,7 @@ import { determineSecurityContext } from "../middlewares/securityContextMiddlewa
 import { measureUploadTime } from "../middlewares/performanceMetricsMiddleware.js";
 import { applyRouteRule } from "../middlewares/applyRouteRuleMiddleware.js";
 import { uploadSingleFile } from "../controllers/files/uploadSingleFileController.js";
-import { uploadMultipleVariantsFiles, uploadMultipleDistinctFiles } from "../controllers/files/uploadMultipleFiles.js";
+import { uploadMultipleVariantsFiles, uploadMultipleDistinctFiles } from "../controllers/files/uploadMultipleFilesController.js";
 import { createSingleFileSchema, createMultipleFilesSchema } from "../schemas/uploadSchemas.js";
 import { changeStatusFileSchema } from "../schemas/changeStatusFileShema.js";
 import { changeStatusFile } from "../controllers/files/changeStatusFileController.js";
@@ -59,13 +59,21 @@ router.post(
   uploadMultipleDistinctFiles
 );
 
-// Endpoint para obtener los archivos
+// Endpoint para obtener los archivos publicos sin hacer el resizing
 router.post(
   "/files/public/search",
   validateSchema(searchFilesSchema),
   validatePublicFiles,
   getPublicFiles
 );
+
+// Endpoint para obtener los archivos publicos haciendo el resizing
+/* router.post(
+  "/files/public/search/resizing",
+  validateSchema(searchFilesSchemaResizing),
+  validatePublicFiles,
+  getPublicFilesResizing
+); */
 
 /* router.post(
   "/files/private/search",

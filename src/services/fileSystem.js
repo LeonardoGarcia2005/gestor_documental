@@ -17,6 +17,7 @@ export const saveFileFromBuffer = async (filePath, buffer) => {
   }
 };
 
+// Guarda múltiples archivos desde buffers, creando directorios si no existen
 export const saveMultipleFilesFromBuffer = async (fileData) => {
   const savedFiles = [];
   const failedFiles = [];
@@ -58,6 +59,7 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
   }
 };
 
+// Rollback de archivos guardados
 const rollbackSavedFiles = async (filePaths) => {
   for (const filePath of filePaths) {
     try {
@@ -71,3 +73,13 @@ const rollbackSavedFiles = async (filePaths) => {
     }
   }
 };
+
+// Verifica si un archivo existe en el sistema
+export const checkFileExists = async (filePath) => {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}

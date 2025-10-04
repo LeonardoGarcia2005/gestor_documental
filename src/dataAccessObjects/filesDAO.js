@@ -1,6 +1,35 @@
 import { loggerGlobal } from "../logging/loggerManager.js";
 import { dbConnectionProvider } from "../config/db/dbConnectionManager.js";
 
+const getFileByCode = async (codeFile) => {
+  try {
+    const queryFile = `
+      SELECT 
+        f.id,
+        f.code,
+        f.file_name,
+        f.route_rule_id
+      FROM file AS f
+      WHERE f.code = $1
+    `;
+
+    const values = [codeFile];
+
+    const result = await dbConnectionProvider.firstOrDefault(
+      queryFile,
+      values
+    );
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al obtener el archivo", {
+      error: error.message,
+      stack: error.stack,
+      codeFile,
+    });
+    throw new Error(`Error al obtener el archivo: ${error.message}`);
+  }
+};
+
 // Consulta parametrizada para obtener archivo por md5 y route_rule_id
 const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
   try {
@@ -261,7 +290,8 @@ const filesDAO = {
   insertFile,
   changeStatusFile,
   insertFileVariant,
-  existSomePrivateFile
+  existSomePrivateFile,
+  getFileByCode
 };
 
 export { filesDAO };

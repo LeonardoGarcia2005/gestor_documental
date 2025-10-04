@@ -1,5 +1,6 @@
 import { loggerGlobal } from "../logging/loggerManager.js";
 import { dbConnectionProvider } from "../config/db/dbConnectionManager.js";
+import { filesDAO } from "./filesDAO.js";
 
 // Insertar los parámetros del archivo (filtrando los que tienen default)
 const insertFileParameterValue = async (fileId, routeRuleId, routeParameterValues, t) => {
@@ -152,33 +153,18 @@ const insertFileParameterValue = async (fileId, routeRuleId, routeParameterValue
 
 const buildFilePathFromCode = async (codeFile) => {
     try {
-        // OBTENER INFORMACIÓN BASE DEL ARCHIVO
-        const fileQuery = `
-            SELECT 
-                f.id,
-                f.file_name,
-                f.route_rule_id
-            FROM file f
-            WHERE f.code = $1 AND f.status = TRUE
-            LIMIT 1
-        `;
+        const fileData = await filesDAO.getFileByCode(codeFile);
 
-        const file = await dbConnectionProvider.firstOrDefault(fileQuery, [codeFile]);
-
-        if (!file) {
+        if (!fileData) {
             throw new Error(`No se encontró el archivo con código: ${codeFile}`);
         }
-
-        loggerGlobal.debug(`Archivo encontrado: ${file.file_name} (route_rule_id: ${file.route_rule_id})`);
-
-        // OBTENER PARÁMETROS DE RUTA CON DEFAULTS
+        // Obtener los parametros de las reglas predefinidas y que ya estan por defectos
         const routeParamsQuery = `
             SELECT 
                 rrp.route_parameter_id,
                 rrp.default_value,
                 rrp.position_order,
-                rr.separator_char,
-                rr.base_path
+                rr.separator_char
             FROM route_rule_parameter rrp
             JOIN route_rule rr ON rrp.route_rule_id = rr.id
             WHERE rrp.route_rule_id = $1 
@@ -188,19 +174,16 @@ const buildFilePathFromCode = async (codeFile) => {
 
         const routeParams = await dbConnectionProvider.getAll(
             routeParamsQuery,
-            [file.route_rule_id]
+            [fileData.route_rule_id]
         );
 
         if (!routeParams || routeParams.length === 0) {
-            throw new Error(`No se encontraron parámetros de ruta para route_rule_id: ${file.route_rule_id}`);
+            throw new Error(`No se encontraron parámetros de ruta para route_rule_id: ${fileData.route_rule_id}`);
         }
 
         const separatorChar = routeParams[0].separator_char || path.sep;
-        const basePath = routeParams[0].base_path || '';
 
-        loggerGlobal.debug(`Encontrados ${routeParams.length} parámetros de ruta`);
-
-        // OBTENER VALORES DINÁMICOS GUARDADOS
+        // Obtener los valores dinamicos guardados
         const dynamicValuesQuery = `
             SELECT 
                 fpv.route_parameter_id,
@@ -211,10 +194,8 @@ const buildFilePathFromCode = async (codeFile) => {
 
         const dynamicValues = await dbConnectionProvider.getAll(
             dynamicValuesQuery,
-            [file.id]
+            [fileData.id]
         );
-
-        loggerGlobal.debug(`Encontrados ${dynamicValues.length} valores dinámicos`);
 
         // Construir la ruta combinando default y dinamicos
         const routeParts = [];
@@ -222,7 +203,7 @@ const buildFilePathFromCode = async (codeFile) => {
         for (const param of routeParams) {
             // Buscar si existe un valor dinámico para este parámetro
             const dynamicParam = dynamicValues.find(
-                dv => dv.route_parameter_id === param.route_parameter_id
+                dv => dv.route_parameter_id == param.route_parameter_id
             );
 
             // Prioridad: valor dinámico > default
@@ -237,11 +218,10 @@ const buildFilePathFromCode = async (codeFile) => {
         }
 
         const relativePath = routeParts.join(separatorChar);
-        const fullPath = path.join(basePath, relativePath, file.file_name);
+        // Se añade la ruta construida y a su vez el nombre del archivo
+        const fullRoutePath = `${relativePath}/${fileData.file_name}`;
 
-        loggerGlobal.info(`Ruta reconstruida para ${codeFile}: ${fullPath}`);
-
-        return fullPath;
+        return fullRoutePath;
 
     } catch (err) {
         loggerGlobal.error(`Error al construir ruta para archivo ${codeFile}:`, err);
