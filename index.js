@@ -63,8 +63,73 @@ app.use((req, res, next) => {
 });
 
 // Saludo del gestor documental
-app.get("/", (_, res) => {
-  res.send("Gestor Documental");
+app.get("/", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Gestor Documental</title>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+        }
+        .container {
+          text-align: center;
+          padding: 2rem;
+        }
+        h1 {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+          text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        p {
+          font-size: 1.2rem;
+          margin-bottom: 2rem;
+          opacity: 0.9;
+        }
+        .info {
+          background: rgba(255,255,255,0.1);
+          backdrop-filter: blur(10px);
+          border-radius: 10px;
+          padding: 1.5rem;
+          margin-top: 2rem;
+          border: 1px solid rgba(255,255,255,0.2);
+        }
+        .status {
+          display: inline-block;
+          background: #10b981;
+          padding: 0.5rem 1rem;
+          border-radius: 20px;
+          font-weight: bold;
+          margin-top: 1rem;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Gestor Documental</h1>
+        <p>Sistema de gestión de archivos y documentos</p>
+        <div class="info">
+          <p>API REST operativa</p>
+          <div class="status">Sistema activo</div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 const API_PREFIX = "/gestor/api"

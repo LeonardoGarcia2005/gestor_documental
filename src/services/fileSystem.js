@@ -1,16 +1,29 @@
 import fs from "fs/promises";
 import path from "path";
 import { loggerGlobal } from "../logging/loggerManager.js";
+import {
+  DEFAULT_DIR_PERMISSIONS,
+  DEFAULT_FILE_PERMISSIONS,
+  changeOwnership
+} from "../config/permissions/configFileLinux.js";
 
 // Guarda un archivo desde un buffer, creando directorios si no existen
 export const saveFileFromBuffer = async (filePath, buffer) => {
   try {
     // Crear directorios si no existen
     const dir = path.dirname(filePath);
-    await fs.mkdir(dir, { recursive: true });
+    await fs.mkdir(dir, { recursive: true, mode: DEFAULT_DIR_PERMISSIONS });
+
+    // Cambiar propietario del directorio
+    await changeOwnership(dir);
 
     // Guardar el archivo
-    await fs.writeFile(filePath, buffer);
+    await fs.writeFile(filePath, buffer, { mode: DEFAULT_FILE_PERMISSIONS });
+
+    // Cambiar propietario del archivo
+    await changeOwnership(filePath);
+
+    loggerGlobal.info(`Archivo guardado exitosamente: ${filePath}`);
   } catch (error) {
     loggerGlobal.error(`Error guardando archivo ${filePath}:`, error);
     throw new Error(`No se pudo guardar el archivo: ${error.message}`);
@@ -28,9 +41,7 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
       try {
         await saveFileFromBuffer(filePath, buffer);
         savedFiles.push({ filePath, success: true });
-        loggerGlobal.info(
-          `Archivo guardado exitosamente: ${filePath}`
-        );
+        loggerGlobal.info(`Archivo guardado exitosamente: ${filePath}`);
       } catch (error) {
         failedFiles.push({
           filePath,
@@ -46,7 +57,6 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
       loggerGlobal.warn("Algunos archivos fallaron, ejecutando rollback...");
       await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
     }
-
   } catch (error) {
     loggerGlobal.error("Error general guardando múltiples archivos:", error);
 
@@ -82,4 +92,4 @@ export const checkFileExists = async (filePath) => {
   } catch {
     return false;
   }
-}
+};
