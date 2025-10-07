@@ -45,6 +45,7 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
       } catch (error) {
         failedFiles.push({
           filePath,
+          originalName: originalName || filePath,
           error: error.message,
           success: false,
         });
@@ -53,10 +54,25 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
     }
 
     // Si hay archivos que fallaron, limpiar los exitosos (rollback)
-    if (failedFiles.length > 0 && savedFiles.length > 0) {
-      loggerGlobal.warn("Algunos archivos fallaron, ejecutando rollback...");
-      await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
+    if (failedFiles.length > 0) {
+      loggerGlobal.error(`❌ ${failedFiles.length} archivo(s) fallaron al guardar`);
+      
+      if (savedFiles.length > 0) {
+        loggerGlobal.warn("Algunos archivos fallaron, ejecutando rollback...");
+        await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
+      }
+
+      // Lanzar error con detalles de los archivos que fallaron
+      throw new Error(
+        `No se pudieron guardar ${failedFiles.length} archivo(s): ${
+          failedFiles.map(f => `${f.originalName} (${f.error})`).join(', ')
+        }`
+      );
     }
+
+    loggerGlobal.info(`✅ Todos los archivos guardados exitosamente (${savedFiles.length})`);
+    return savedFiles;
+
   } catch (error) {
     loggerGlobal.error("Error general guardando múltiples archivos:", error);
 
@@ -65,7 +81,7 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
       await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
     }
 
-    throw new Error(`Error procesando múltiples archivos: ${error.message}`);
+    throw error; // Re-lanzar el error para que el controlador lo maneje
   }
 };
 

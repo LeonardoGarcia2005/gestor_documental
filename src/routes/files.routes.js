@@ -62,7 +62,7 @@ router.post(
 // Endpoint para obtener los archivos publicos sin hacer el resizing
 router.get(
   "/files/public/search",
-  validateSchema(searchFilesSchema),
+  validateSchema(searchFilesSchema, 'query'),
   validatePublicFiles,
   getPublicFiles
 );

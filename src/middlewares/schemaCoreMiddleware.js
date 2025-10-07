@@ -1,24 +1,33 @@
 import { loggerGlobal } from "../logging/loggerManager.js";
 
-export const validateSchema = (schema) => {
+export const validateSchema = (schema, source = 'body') => {
   return (req, res, next) => {
     try {
-      let data = { ...req.body };
+      let data;
 
-      // Determinar si es archivo único o múltiples archivos
-      if (req.file) {
-        // Archivo único
-        data.file = req.file;
-      } else if (req.files && req.files.length > 0) {
-        // Múltiples archivos
-        const deviceTypesArray = req.body.deviceType 
-          ? req.body.deviceType.split(',').map(type => type.trim())
-          : [];
+      // Determinar de dónde viene la data
+      if (source === 'query') {
+        // Validar query params
+        data = { ...req.query };
+      } else {
+        // Validar body (comportamiento original)
+        data = { ...req.body };
 
-        data.filesData = req.files.map((file, index) => ({
-          file,
-          deviceType: deviceTypesArray[index] || null,
-        }));
+        // Determinar si es archivo único o múltiples archivos
+        if (req.file) {
+          // Archivo único
+          data.file = req.file;
+        } else if (req.files && req.files.length > 0) {
+          // Múltiples archivos
+          const deviceTypesArray = req.body.deviceType 
+            ? req.body.deviceType.split(',').map(type => type.trim())
+            : [];
+
+          data.filesData = req.files.map((file, index) => ({
+            file,
+            deviceType: deviceTypesArray[index] || null,
+          }));
+        }
       }
 
       const { error, value } = schema.validate(data, {
@@ -36,8 +45,17 @@ export const validateSchema = (schema) => {
         });
       }
 
-      // Actualizar el body con los valores validados
-      req.body = { ...req.body, ...value };
+      // Actualizar el body o query con los valores validados
+      if (source === 'query') {
+        req.query = { ...req.query, ...value };
+        // Opcional: guardar los códigos parseados para el siguiente middleware
+        if (value.codes) {
+          req.validatedCodes = value.codes.split(',');
+        }
+      } else {
+        req.body = { ...req.body, ...value };
+      }
+
       next();
     } catch (err) {
       loggerGlobal.error("Error en validación:", err);
