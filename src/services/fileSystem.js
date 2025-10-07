@@ -1,16 +1,41 @@
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 import { loggerGlobal } from "../logging/loggerManager.js";
 
-// Guarda un archivo desde un buffer, creando directorios si no existen
+const isUnixSystem = ["linux", "darwin"].includes(os.platform());
+
+// Aplica permisos 755 a todas las carpetas de la ruta (recursivo)
+const applyDirPermissionsRecursively = async (dirPath) => {
+  if (!isUnixSystem) return; // No aplicar en Windows
+  const parts = dirPath.split(path.sep);
+  let currentPath = "";
+
+  for (const part of parts) {
+    if (!part) continue;
+    currentPath += `/${part}`;
+    try {
+      await fs.chmod(currentPath, 0o755);
+    } catch {
+      // ignorar errores si alguna carpeta no existe aún
+    }
+  }
+};
+
+// Guarda un archivo desde un buffer
 export const saveFileFromBuffer = async (filePath, buffer) => {
   try {
-    // Crear directorios si no existen
     const dir = path.dirname(filePath);
     await fs.mkdir(dir, { recursive: true });
 
-    // Guardar el archivo
+    // Guardar archivo
     await fs.writeFile(filePath, buffer);
+
+    // Aplicar permisos solo si es Linux o macOS
+    if (isUnixSystem) {
+      await applyDirPermissionsRecursively(dir); // asegurar todas las carpetas
+      await fs.chmod(filePath, 0o755);           // asegurar el archivo
+    }
 
     loggerGlobal.info(`Archivo guardado exitosamente: ${filePath}`);
   } catch (error) {
@@ -19,18 +44,16 @@ export const saveFileFromBuffer = async (filePath, buffer) => {
   }
 };
 
-// Guarda múltiples archivos desde buffers, creando directorios si no existen
+// Guarda múltiples archivos
 export const saveMultipleFilesFromBuffer = async (fileData) => {
   const savedFiles = [];
   const failedFiles = [];
 
   try {
-    // Procesar todos los archivos
     for (const { filePath, buffer, originalName } of fileData) {
       try {
         await saveFileFromBuffer(filePath, buffer);
         savedFiles.push({ filePath, success: true });
-        loggerGlobal.info(`Archivo guardado exitosamente: ${filePath}`);
       } catch (error) {
         failedFiles.push({
           filePath,
@@ -38,20 +61,13 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
           error: error.message,
           success: false,
         });
-        loggerGlobal.error(`Error guardando archivo ${filePath}:`, error);
       }
     }
 
-    // Si hay archivos que fallaron, limpiar los exitosos (rollback)
     if (failedFiles.length > 0) {
-      loggerGlobal.error(`❌ ${failedFiles.length} archivo(s) fallaron al guardar`);
-      
       if (savedFiles.length > 0) {
-        loggerGlobal.warn("Algunos archivos fallaron, ejecutando rollback...");
         await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
       }
-
-      // Lanzar error con detalles de los archivos que fallaron
       throw new Error(
         `No se pudieron guardar ${failedFiles.length} archivo(s): ${
           failedFiles.map(f => `${f.originalName} (${f.error})`).join(', ')
@@ -59,37 +75,28 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
       );
     }
 
-    loggerGlobal.info(`✅ Todos los archivos guardados exitosamente (${savedFiles.length})`);
     return savedFiles;
-
   } catch (error) {
     loggerGlobal.error("Error general guardando múltiples archivos:", error);
-
-    // Limpiar archivos guardados en caso de error general
     if (savedFiles.length > 0) {
       await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
     }
-
-    throw error; // Re-lanzar el error para que el controlador lo maneje
+    throw error;
   }
 };
 
-// Rollback de archivos guardados
+// Rollback
 const rollbackSavedFiles = async (filePaths) => {
   for (const filePath of filePaths) {
     try {
       await fs.unlink(filePath);
-      loggerGlobal.info(`Archivo eliminado en rollback: ${filePath}`);
     } catch (error) {
-      loggerGlobal.error(
-        `Error eliminando archivo en rollback ${filePath}:`,
-        error
-      );
+      loggerGlobal.error(`Error eliminando archivo en rollback ${filePath}:`, error);
     }
   }
 };
 
-// Verifica si un archivo existe en el sistema
+// Verifica si un archivo existe
 export const checkFileExists = async (filePath) => {
   try {
     await fs.access(filePath);
