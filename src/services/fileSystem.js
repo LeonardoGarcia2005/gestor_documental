@@ -1,27 +1,16 @@
 import fs from "fs/promises";
 import path from "path";
 import { loggerGlobal } from "../logging/loggerManager.js";
-import {
-  DEFAULT_DIR_PERMISSIONS,
-  DEFAULT_FILE_PERMISSIONS,
-  changeOwnership
-} from "../config/permissions/configFileLinux.js";
 
 // Guarda un archivo desde un buffer, creando directorios si no existen
 export const saveFileFromBuffer = async (filePath, buffer) => {
   try {
     // Crear directorios si no existen
     const dir = path.dirname(filePath);
-    await fs.mkdir(dir, { recursive: true, mode: DEFAULT_DIR_PERMISSIONS });
-
-    // Cambiar propietario del directorio
-    await changeOwnership(dir);
+    await fs.mkdir(dir, { recursive: true });
 
     // Guardar el archivo
-    await fs.writeFile(filePath, buffer, { mode: DEFAULT_FILE_PERMISSIONS });
-
-    // Cambiar propietario del archivo
-    await changeOwnership(filePath);
+    await fs.writeFile(filePath, buffer);
 
     loggerGlobal.info(`Archivo guardado exitosamente: ${filePath}`);
   } catch (error) {
