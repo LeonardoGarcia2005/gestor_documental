@@ -172,9 +172,3 @@ const buildRoutePathWithParameters = (routeParameters, values) => {
     routeParameterValues
   };
 };
-
-// Mantener la función original por compatibilidad (si se usa en otros lugares)
-const buildRoutePath = (routeParameters, values) => {
-  const { routePath } = buildRoutePathWithParameters(routeParameters, values);
-  return routePath;
-};

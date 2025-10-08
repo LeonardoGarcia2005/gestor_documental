@@ -42,7 +42,7 @@ router.post(
 router.post(
   "/upload/multiple/variants",
   handleMultipleFiles('files'),
-  validateSchema(createMultipleFilesSchema),
+  validateSchema(createMultipleFilesSchema(false), 'body', false),
   attachFileExtensions,
   determineSecurityContext,
   measureUploadTime,
@@ -54,7 +54,7 @@ router.post(
 router.post(
   "/upload/multiple/distinct",
   handleMultipleFiles('files'),
-  validateSchema(createMultipleFilesSchema),
+  validateSchema(createMultipleFilesSchema(true), 'body', true),
   attachFileExtensions,
   determineSecurityContext,
   measureUploadTime,

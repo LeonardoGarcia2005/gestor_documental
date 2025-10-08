@@ -15,6 +15,7 @@ import { formatDate } from "../../lib/formatters.js";
 export const uploadMultipleVariantsFiles = async (req, res) => {
     let createdFiles = [];
     let responseData = null;
+    let transactionCommitted = false;
 
     try {
         const { securityContext, securityLevelId, channelId, documentTypeId } = req;
@@ -134,9 +135,35 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                 };
             });
 
+            // ⚠️ CRÍTICO: Guardar archivos físicos PRIMERO
+            // Si esto falla, no se hace nada en la BD
+            loggerGlobal.info(`Guardando ${filesWithMetadata.length} archivos físicos...`);
+            
+            try {
+                const filesToSave = filesWithMetadata.map(file => ({
+                    filePath: file.fullStoragePath,
+                    buffer: file.buffer,
+                    originalName: file.originalName,
+                }));
+
+                await saveMultipleFilesFromBuffer(filesToSave);
+                createdFiles = filesWithMetadata.map(f => f.fullStoragePath);
+                loggerGlobal.info(`✅ ${createdFiles.length} archivos físicos guardados exitosamente`);
+            } catch (fileError) {
+                loggerGlobal.error(`❌ Error guardando archivos físicos: ${fileError.message}`);
+                return res.status(500).json({
+                    error: "Error guardando archivos en el sistema",
+                    details: fileError.message,
+                });
+            }
+
+            // Solo si los archivos físicos se guardaron correctamente, proceder con la BD
+            loggerGlobal.info('Iniciando transacción de base de datos...');
+            
             await dbConnectionProvider.tx(async (t) => {
                 const mainFileData = filesWithMetadata[0];
 
+                // Insertar archivo principal
                 const mainFileInserted = await filesDAO.insertFile(
                     securityContext.companyId ?? null,
                     mainFileData.config.documentTypeId,
@@ -158,6 +185,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                 mainFileData.dbResult = mainFileInserted;
                 mainFileData.mainFileId = mainFileInserted.id;
 
+                // Insertar parámetros del archivo principal
                 if (mainFileData.routeParameterValues?.length > 0) {
                     await fileParameterValueDAO.insertFileParameterValue(
                         mainFileInserted.id,
@@ -167,17 +195,20 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                     );
                 }
 
+                // Insertar la variante principal (se referencia a sí mismo)
                 await filesDAO.insertFileVariant(
                     mainFileInserted.id,
                     mainFileInserted.id,
                     mainFileData.resolution,
                     mainFileData.deviceType,
-                    true,
+                    true, // is_main
                     t
                 );
 
+                // Si hay más archivos, son variantes del principal
                 if (filesWithMetadata.length > 1) {
-                    const variantInsertPromises = filesWithMetadata.slice(1).map(async (variantFile, idx) => {
+                    const variantInsertPromises = filesWithMetadata.slice(1).map(async (variantFile) => {
+                        // Insertar archivo variante
                         const variantInserted = await filesDAO.insertFile(
                             securityContext.companyId ?? null,
                             variantFile.config.documentTypeId,
@@ -190,7 +221,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                             variantFile.fileNameWithCode,
                             variantFile.config.emissionDate,
                             variantFile.config.expirationDate,
-                            false,
+                            false, // has_variants (las variantes no tienen sub-variantes)
                             variantFile.sizeBytes,
                             variantFile.md5,
                             t
@@ -198,6 +229,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
 
                         variantFile.dbResult = variantInserted;
 
+                        // Insertar parámetros de la variante
                         if (variantFile.routeParameterValues?.length > 0) {
                             await fileParameterValueDAO.insertFileParameterValue(
                                 variantInserted.id,
@@ -207,12 +239,13 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                             );
                         }
 
+                        // Vincular variante con el archivo principal
                         await filesDAO.insertFileVariant(
-                            mainFileInserted.id,
-                            variantInserted.id,
+                            mainFileInserted.id, // main_file_id
+                            variantInserted.id,  // variant_file_id
                             variantFile.resolution,
                             variantFile.deviceType,
-                            false,
+                            false, // is_main
                             t
                         );
 
@@ -221,16 +254,10 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
 
                     await Promise.all(variantInsertPromises);
                 }
+
+                transactionCommitted = true;
+                loggerGlobal.info('✅ Transacción de BD completada exitosamente');
             });
-
-            const filesToSave = filesWithMetadata.map(file => ({
-                filePath: file.fullStoragePath,
-                buffer: file.buffer,
-            }));
-
-            await saveMultipleFilesFromBuffer(filesToSave);
-
-            createdFiles = filesWithMetadata.map(f => f.fullStoragePath);
 
             uploadedFiles.push(...filesWithMetadata.map(file => ({
                 index: file.index,
@@ -267,16 +294,18 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
         };
 
         return res.status(201).json(responseData);
+        
     } catch (error) {
         loggerGlobal.error("Error en uploadMultipleFiles:", error);
         loggerGlobal.error("Stack trace:", error.stack);
 
-        if (createdFiles.length > 0) {
-            loggerGlobal.info(`Limpiando ${createdFiles.length} archivos por error`);
+        // Si la transacción se commiteó pero hubo error después, eliminar archivos físicos (rollback)
+        if (transactionCommitted && createdFiles.length > 0) {
+            loggerGlobal.warn(`Rollback: Eliminando ${createdFiles.length} archivos físicos...`);
             const cleanupPromises = createdFiles.map(async (filePath) => {
                 try {
                     await fs.unlink(filePath);
-                    loggerGlobal.info(`Archivo físico eliminado: ${filePath}`);
+                    loggerGlobal.info(`Archivo físico eliminado tras error: ${filePath}`);
                 } catch (cleanupError) {
                     loggerGlobal.error(`Error eliminando archivo: ${filePath}`, cleanupError);
                 }
@@ -294,6 +323,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
 
 export const uploadMultipleDistinctFiles = async (req, res) => {
     let createdFiles = [];
+    let transactionCommitted = false;
 
     try {
         const { securityContext, securityLevelId, channelId, documentTypeId } = req;
@@ -407,6 +437,29 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                 };
             });
 
+            // ⚠️ CRÍTICO: Guardar archivos físicos PRIMERO
+            // Si esto falla, no se hace nada en la BD
+            loggerGlobal.info(`Guardando ${filesWithMetadata.length} archivos físicos en batch...`);
+            
+            try {
+                const filesToSave = filesWithMetadata.map(file => ({
+                    filePath: file.fullStoragePath,
+                    buffer: file.buffer,
+                    originalName: file.originalName,
+                }));
+
+                await saveMultipleFilesFromBuffer(filesToSave);
+                createdFiles = filesWithMetadata.map(f => f.fullStoragePath);
+                loggerGlobal.info(`✅ ${createdFiles.length} archivos físicos guardados exitosamente`);
+            } catch (fileError) {
+                loggerGlobal.error(`❌ Error guardando archivos físicos: ${fileError.message}`);
+                return res.status(500).json({
+                    error: "Error guardando archivos en el sistema",
+                    details: fileError.message,
+                });
+            }
+
+            // Solo si los archivos físicos se guardaron correctamente, proceder con la BD
             loggerGlobal.info('Iniciando transacción de base de datos para batch...');
 
             await dbConnectionProvider.tx(async (t) => {
@@ -444,17 +497,10 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                         );
                     }
                 }
+
+                transactionCommitted = true;
+                loggerGlobal.info('✅ Transacción de BD completada exitosamente');
             });
-
-            const filesToSave = filesWithMetadata.map(file => ({
-                filePath: file.fullStoragePath,
-                buffer: file.buffer,
-            }));
-
-            await saveMultipleFilesFromBuffer(filesToSave);
-            loggerGlobal.info('Archivos guardados exitosamente');
-
-            createdFiles = filesWithMetadata.map(f => f.fullStoragePath);
 
             uploadedFiles.push(...filesWithMetadata.map(file => ({
                 index: file.index,
@@ -489,12 +535,13 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
         loggerGlobal.error("Error en uploadBatch:", error);
         loggerGlobal.error("Stack trace:", error.stack);
 
-        if (createdFiles.length > 0) {
-            loggerGlobal.info(`Limpiando ${createdFiles.length} archivos por error`);
+        // Si la transacción se commiteó pero hubo error después, eliminar archivos físicos (rollback)
+        if (transactionCommitted && createdFiles.length > 0) {
+            loggerGlobal.warn(`Rollback: Eliminando ${createdFiles.length} archivos físicos...`);
             const cleanupPromises = createdFiles.map(async (filePath) => {
                 try {
                     await fs.unlink(filePath);
-                    loggerGlobal.info(`Archivo físico eliminado: ${filePath}`);
+                    loggerGlobal.info(`Archivo físico eliminado tras error: ${filePath}`);
                 } catch (cleanupError) {
                     loggerGlobal.error(`Error eliminando archivo: ${filePath}`, cleanupError);
                 }
@@ -508,4 +555,4 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
             details: error.message,
         });
     }
-}
+};

@@ -7,21 +7,24 @@ import { buildFileUrl } from "../../lib/builder.js";
 
 
 export const getPublicFiles = async (req, res) => {
-  const { files } = req.body;
+  const { codes } = req.query;
 
   try {
+    // Convertir string separado por comas a array
+    const codeArray = codes.split(',').map(code => code.trim());
+
     const filesWithMetadata = await Promise.all(
-      files.map(async (file) => {
+      codeArray.map(async (code) => {
         try {
           // Obtener metadata del archivo
-          const fileData = await filesDAO.getFileByCode(file.code);
+          const fileData = await filesDAO.getFileByCode(code);
 
           if (!fileData) {
-            throw new Error(`Archivo no encontrado: ${file.code}`);
+            throw new Error(`Archivo no encontrado: ${code}`);
           }
 
           // Construir la ruta completa del archivo
-          const filePath = await fileParameterValueDAO.buildFilePathFromCode(file.code);
+          const filePath = await fileParameterValueDAO.buildFilePathFromCode(code);
 
           // Verificar existencia física (opcional, solo log)
           const exists = await checkFileExists(filePath);
@@ -38,7 +41,7 @@ export const getPublicFiles = async (req, res) => {
           };
 
         } catch (error) {
-          loggerGlobal.error(`Error procesando archivo ${file.code}:`, error);
+          loggerGlobal.error(`Error procesando archivo ${code}:`, error);
           // Retornar null para filtrar después
           return null;
         }

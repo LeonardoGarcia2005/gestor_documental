@@ -17,6 +17,7 @@ import { formatDate } from "../../lib/formatters.js";
 export const uploadSingleFile = async (req, res) => {
   let responseData = null;
   let fullStoragePath = null;
+  let transactionCommitted = false;
 
   try {
     const {
@@ -30,25 +31,19 @@ export const uploadSingleFile = async (req, res) => {
       routeParameterValues
     } = req;
 
-    // Desestructuramos el fileInfo
     const { cleanName, extensionId, sizeBytes, buffer } = fileInfo;
-
-    // Obtener y normalizar las fechas de emisión y expiración
     const { emissionDate, expirationDate, documentType, securityLevel } = req.body;
     
-    // Normalizar fechas: si no vienen del frontend, se generan por defecto
+    // Fecha de expiración por defecto: un año desde hoy
     const defaultEmissionDate = normalizeDate(emissionDate);
     const defaultExpirationDate = normalizeDate(expirationDate, 1);
 
+    // Crear un valor unico por buffer
     const md5 = calculateMD5(buffer);
 
-    // Validar que el archivo ya no exista en la base de datos (fuera de transacción)
-    const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(
-      md5,
-      routeRuleId
-    );
+    // Validar que el archivo ya no exista
+    const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(md5, routeRuleId);
 
-    // Evaluar el tipo de seguridad para retornarle la url o no para decirle que el archivo es privado debe consultarlo para poder obtener la url
     const publicLevel = securityLevels.find((level) =>
       level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
     );
@@ -61,12 +56,8 @@ export const uploadSingleFile = async (req, res) => {
         message: "El archivo ya existe",
         details: {
           ...(securityLevel === publicLevel
-            ? {
-              fileUrl: fileUrl,
-            }
-            : {
-              fileName: fileExists.fileName,
-            }),
+            ? { fileUrl: fileUrl }
+            : { fileName: fileExists.fileName }),
           codeFile: fileExists.codeFile,
           emissionDate: fileExists.emissionDate,
           expirationDate: fileExists.expirationDate,
@@ -76,27 +67,28 @@ export const uploadSingleFile = async (req, res) => {
       });
     }
 
-    // Generar el código del archivo para unirlo a la ruta
     const codeFile = generateCodeFile();
-
-    // Dividir el nombre con la extensión
-    const ext = path.extname(cleanName); // .pdf
-    const baseName = path.basename(cleanName, ext); // document
-
-    // Construir el nuevo nombre
+    const ext = path.extname(cleanName);
+    const baseName = path.basename(cleanName, ext);
     const fileNameWithCode = `${baseName}-${codeFile}${ext}`;
-
-    // Unir a la ruta final para la URL
     const routeWithFileNameAndCode = `${routePath}/${fileNameWithCode}`;
-
     const fileUrl = buildFileUrl(routeWithFileNameAndCode);
-
-    // Ruta física completa del archivo
     fullStoragePath = path.join(routePath, fileNameWithCode);
 
-    // Ejecutar la transacción para operaciones de BD
+    // Si esto falla, no se hace nada en la BD
+    try {
+      await saveFileFromBuffer(fullStoragePath, buffer);
+      loggerGlobal.info(`Archivo físico guardado: ${fullStoragePath}`);
+    } catch (fileError) {
+      loggerGlobal.error(`Error guardando archivo físico: ${fileError.message}`);
+      return res.status(500).json({
+        error: "Error guardando el archivo en el sistema",
+        details: fileError.message,
+      });
+    }
+
+    // Solo SI el archivo físico se guardó correctamente, proceder con la BD
     await dbConnectionProvider.tx(async (t) => {
-      // Insertar el archivo a la base de datos dentro de la transacción
       const fileInserted = await filesDAO.insertFile(
         securityContext.companyId ?? null,
         documentTypeId,
@@ -104,15 +96,15 @@ export const uploadSingleFile = async (req, res) => {
         securityLevelId,
         extensionId,
         codeFile,
-        false, // is_used
+        false,
         routeRuleId,
         fileNameWithCode,
         defaultEmissionDate,
         defaultExpirationDate,
-        false, // hasVariants
+        false,
         sizeBytes,
         md5,
-        t // pasar la transacción
+        t
       );
 
       await fileParameterValueDAO.insertFileParameterValue(
@@ -122,18 +114,13 @@ export const uploadSingleFile = async (req, res) => {
         t
       );
 
-      // Preparar datos de respuesta
       responseData = {
         success: true,
         message: "Archivo subido exitosamente",
         details: {
           ...(securityLevel === publicLevel
-            ? {
-              fileUrl,
-            }
-            : {
-              fileName: fileNameWithCode,
-            }),
+            ? { fileUrl }
+            : { fileName: fileNameWithCode }),
           codeFile: fileInserted.code,
           emissionDate: formatDate(fileInserted.document_emission_date),
           expirationDate: formatDate(fileInserted.document_expiration_date),
@@ -141,28 +128,23 @@ export const uploadSingleFile = async (req, res) => {
           documentType,
         },
       };
+
+      transactionCommitted = true;
     });
 
-    // Si la transacción fue exitosa, guardar el archivo físico
-    await saveFileFromBuffer(fullStoragePath, buffer);
-
-    // Devolver respuesta exitosa
     return res.status(201).json(responseData);
+
   } catch (error) {
     loggerGlobal.error("Error en uploadSingleFile:", error);
 
-    // Si el archivo físico fue creado pero hubo error, intentar eliminarlo
-    if (fullStoragePath) {
+    // Si la transacción se commiteó pero hubo error después, 
+    // eliminar el archivo físico (rollback)
+    if (fullStoragePath && transactionCommitted) {
       try {
         await fs.unlink(fullStoragePath);
-        loggerGlobal.info(
-          `Archivo físico eliminado tras error: ${fullStoragePath}`
-        );
+        loggerGlobal.info(`Archivo físico eliminado tras error en transacción: ${fullStoragePath}`);
       } catch (cleanupError) {
-        loggerGlobal.error(
-          `Error eliminando archivo físico tras fallo:`,
-          cleanupError
-        );
+        loggerGlobal.error(`Error eliminando archivo físico:`, cleanupError);
       }
     }
 

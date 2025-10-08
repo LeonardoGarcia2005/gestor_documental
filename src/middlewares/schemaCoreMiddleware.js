@@ -1,6 +1,6 @@
 import { loggerGlobal } from "../logging/loggerManager.js";
 
-export const validateSchema = (schema) => {
+export const validateSchema = (schema, source = "body", distinct = true) => {
   return (req, res, next) => {
     try {
       // Valor del tipo de metodo http
@@ -39,6 +39,7 @@ export const validateSchema = (schema) => {
         }
       }
 
+      // Validación con Joi
       const { error, value } = schema.validate(data, {
         abortEarly: false,
         allowUnknown: true,
@@ -54,8 +55,16 @@ export const validateSchema = (schema) => {
         });
       }
 
-      // Actualizar el body con los valores validados
-      req.body = { ...req.body, ...value };
+      // Actualizar body o query con los valores validados
+      if (source === "query") {
+        req.query = { ...req.query, ...value };
+        if (value.codes) {
+          req.validatedCodes = value.codes.split(",");
+        }
+      } else {
+        req.body = { ...req.body, ...value };
+      }
+
       next();
     } catch (err) {
       loggerGlobal.error("Error en validación:", err);
