@@ -255,7 +255,7 @@ const changeStatusFile = async (codeFile, isActive) => {
 };
 
 // Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
-const existSomePrivateFile = async (codes) => {
+const existSomeFileWithCompany = async (codes, securityLevelType = 'private') => {
   try {
 
     const queryFile = `
@@ -264,10 +264,11 @@ const existSomePrivateFile = async (codes) => {
         f.code,
         f.company_id
       FROM file AS f
-      WHERE f.code = ANY($1::text[]) AND f.company_id IS NOT NULL
+      JOIN security_level AS sl ON f.security_level_id = sl.id
+      WHERE f.code = ANY($1::text[]) AND sl.type = $2 AND f.company_id IS NOT NULL
     `;
 
-    const values = [codes];
+    const values = [codes, securityLevelType];
 
     const result = await dbConnectionProvider.getAll(
       queryFile,
@@ -284,13 +285,37 @@ const existSomePrivateFile = async (codes) => {
   }
 };
 
+const updateFile = async (fileName, codeFile, fileSize, md5, t) => {
+  try {
+    const result = await dbConnectionProvider.updateOne(
+      "file",
+      { file_name: fileName, file_size: fileSize, file_hash_md5: md5 },
+      t,
+      { code: codeFile }
+    );
+
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al actualizar el archivo", {
+      error: error.message,
+      stack: error.stack,
+      codeFile,
+      fileName,
+      fileSize,
+      md5,
+    });
+    throw new Error(`Error al actualizar el archivo: ${error.message}`);
+  }
+};
+
+
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
   getFilesByMd5AndRouteRuleIds,
   insertFile,
   changeStatusFile,
   insertFileVariant,
-  existSomePrivateFile,
+  existSomeFileWithCompany,
   getFileByCode
 };
 

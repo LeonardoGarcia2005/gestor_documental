@@ -9,7 +9,7 @@ export const validatePublicFiles = async (req, res, next) => {
       const codes = files.map(f => f.code);
   
       // Buscar en la BD los archivos por código
-      const privateFiles = await filesDAO.existSomePrivateFile(codes);
+      const privateFiles = await filesDAO.existSomeFileWithCompany(codes);
   
       if (privateFiles.length > 0) {
         return res.status(400).json({
