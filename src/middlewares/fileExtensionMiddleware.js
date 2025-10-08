@@ -39,19 +39,41 @@ export const attachFileExtensions = async (req, res, next) => {
       };
     };
 
-    // Distinguir entre archivo único y múltiples archivos
+    // Determinar isForMultiFile basado en la ruta del endpoint
+    let isForMultiFile;
+    const requestPath = req.path || req.route?.path || '';
+
+    if (requestPath.includes('/upload/multiple/variants')) {
+      // Endpoint de variantes: todos los archivos son tratados como uno solo
+      isForMultiFile = true;
+    } else if (requestPath.includes('/upload/multiple/distinct')) {
+      // Endpoint de distintos: cada archivo es independiente
+      isForMultiFile = false;
+    } else {
+      // Comportamiento por defecto: detectar según cantidad de archivos
+      if (req.file) {
+        // Archivo único
+        isForMultiFile = false;
+      } else if (req.files && req.files.length > 0) {
+        // Múltiples archivos
+        isForMultiFile = true;
+      } else {
+        // No hay archivos
+        isForMultiFile = false;
+      }
+    }
+
+    // Procesar archivos según el tipo
     if (req.file) {
       // Archivo único
       req.fileInfo = processFile(req.file);
-      req.isForMultiFile = false;
     } else if (req.files && req.files.length > 0) {
       // Múltiples archivos
       req.processedFiles = req.files.map(processFile);
-      req.isForMultiFile = true;
-    } else {
-      // No hay archivos
-      req.isForMultiFile = false;
     }
+
+    // Asignar el valor de isForMultiFile al request
+    req.isForMultiFile = isForMultiFile;
 
     next();
   } catch (error) {

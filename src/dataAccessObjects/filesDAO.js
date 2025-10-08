@@ -255,16 +255,17 @@ const changeStatusFile = async (codeFile, isActive) => {
 };
 
 // Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
+// Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
 const existSomePrivateFile = async (codes) => {
   try {
-
     const queryFile = `
       SELECT 
         f.id,
         f.code,
         f.company_id
       FROM file AS f
-      WHERE f.code = ANY($1::text[]) AND f.company_id IS NOT NULL
+      JOIN security_level AS sl ON f.security_level_id = sl.id
+      WHERE f.code = ANY($1::text[]) AND sl.type = 'private' AND f.company_id IS NOT NULL
     `;
 
     const values = [codes];
