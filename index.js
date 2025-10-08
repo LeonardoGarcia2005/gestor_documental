@@ -64,67 +64,250 @@ app.use((req, res, next) => {
 
 // Saludo del gestor documental
 app.get("/", (req, res) => {
+  // Detectar el entorno (puedes ajustar esta lógica según tu configuración)
+  const environment = process.env.NODE_ENV || 'development';
+  const isProduction = environment === 'production';
+  
   res.send(`
     <!DOCTYPE html>
     <html lang="es">
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Gestor Documental</title>
+      <title>Gestor Documental - ${isProduction ? 'Producción' : 'Desarrollo'}</title>
       <style>
         * {
           margin: 0;
           padding: 0;
           box-sizing: border-box;
         }
+        
         body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background: ${isProduction ? '#f5f7fa' : '#f0f4f8'};
           min-height: 100vh;
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #fff;
+          color: #2d3748;
         }
+        
         .container {
+          max-width: 800px;
+          width: 90%;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07), 0 10px 20px rgba(0, 0, 0, 0.1);
+          overflow: hidden;
+        }
+        
+        .header {
+          background: ${isProduction ? 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)' : 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)'};
+          padding: 3rem 2rem;
           text-align: center;
-          padding: 2rem;
+          color: white;
+          position: relative;
         }
-        h1 {
-          font-size: 3rem;
-          margin-bottom: 1rem;
-          text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-        p {
-          font-size: 1.2rem;
-          margin-bottom: 2rem;
-          opacity: 0.9;
-        }
-        .info {
-          background: rgba(255,255,255,0.1);
-          backdrop-filter: blur(10px);
-          border-radius: 10px;
-          padding: 1.5rem;
-          margin-top: 2rem;
-          border: 1px solid rgba(255,255,255,0.2);
-        }
-        .status {
-          display: inline-block;
-          background: #10b981;
+        
+        .environment-badge {
+          position: absolute;
+          top: 1rem;
+          right: 1rem;
+          background: ${isProduction ? '#10b981' : '#f59e0b'};
+          color: white;
           padding: 0.5rem 1rem;
           border-radius: 20px;
-          font-weight: bold;
-          margin-top: 1rem;
+          font-size: 0.85rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        
+        h1 {
+          font-size: 2.5rem;
+          margin-bottom: 0.5rem;
+          font-weight: 600;
+        }
+        
+        .subtitle {
+          font-size: 1.1rem;
+          opacity: 0.95;
+          font-weight: 300;
+        }
+        
+        .content {
+          padding: 2.5rem 2rem;
+        }
+        
+        .info-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1.5rem;
+          margin-bottom: 2rem;
+        }
+        
+        .info-card {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 1.5rem;
+          text-align: center;
+        }
+        
+        .info-card h3 {
+          font-size: 0.875rem;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 0.5rem;
+          font-weight: 600;
+        }
+        
+        .info-card p {
+          font-size: 1.5rem;
+          color: #1e293b;
+          font-weight: 600;
+        }
+        
+        .status-section {
+          background: #f0fdf4;
+          border: 1px solid #86efac;
+          border-radius: 8px;
+          padding: 1.5rem;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        
+        .status-text {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        
+        .status-indicator {
+          width: 12px;
+          height: 12px;
+          background: #10b981;
+          border-radius: 50%;
+          animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        
+        .status-text span {
+          font-size: 1rem;
+          color: #166534;
+          font-weight: 500;
+        }
+        
+        .status-badge {
+          background: #10b981;
+          color: white;
+          padding: 0.5rem 1rem;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 0.875rem;
+        }
+        
+        .footer {
+          padding: 1.5rem 2rem;
+          background: #f8fafc;
+          border-top: 1px solid #e2e8f0;
+          text-align: center;
+          color: #64748b;
+          font-size: 0.875rem;
+        }
+        
+        .endpoints {
+          margin-top: 2rem;
+          text-align: left;
+        }
+        
+        .endpoints h3 {
+          font-size: 1rem;
+          color: #475569;
+          margin-bottom: 1rem;
+          font-weight: 600;
+        }
+        
+        .endpoint-list {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 1rem;
+        }
+        
+        .endpoint-item {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.5rem;
+          font-size: 0.875rem;
+          color: #475569;
+        }
+        
+        .method {
+          background: #3b82f6;
+          color: white;
+          padding: 0.25rem 0.5rem;
+          border-radius: 4px;
+          font-weight: 600;
+          font-size: 0.75rem;
+          min-width: 60px;
+          text-align: center;
+        }
+        
+        @media (max-width: 640px) {
+          h1 { font-size: 2rem; }
+          .header { padding: 2rem 1.5rem; }
+          .content { padding: 2rem 1.5rem; }
+          .info-grid { grid-template-columns: 1fr; }
         }
       </style>
     </head>
     <body>
       <div class="container">
-        <h1>Gestor Documental</h1>
-        <p>Sistema de gestión de archivos y documentos</p>
-        <div class="info">
-          <p>API REST operativa</p>
-          <div class="status">Sistema activo</div>
+        <div class="header">
+          <div class="environment-badge">${isProduction ? 'Producción' : 'Desarrollo'}</div>
+          <h1>Gestor Documental</h1>
+          <p class="subtitle">Sistema de Gestión de Archivos y Documentos</p>
+        </div>
+        
+        <div class="content">
+          <div class="info-grid">
+            <div class="info-card">
+              <h3>Estado del Sistema</h3>
+              <p>Operativo</p>
+            </div>
+            <div class="info-card">
+              <h3>Entorno</h3>
+              <p>${isProduction ? 'Producción' : 'Desarrollo'}</p>
+            </div>
+            <div class="info-card">
+              <h3>Versión API</h3>
+              <p>v1.0</p>
+            </div>
+          </div>
+          
+          <div class="status-section">
+            <div class="status-text">
+              <div class="status-indicator"></div>
+              <span>API REST Operativa</span>
+            </div>
+            <div class="status-badge">ACTIVO</div>
+          </div>
+          
+          <div class="endpoints">
+            <h3>Endpoints Disponibles</h3>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <p>© ${new Date().getFullYear()} Gestor Documental. Todos los derechos reservados.</p>
         </div>
       </div>
     </body>
