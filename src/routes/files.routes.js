@@ -39,7 +39,7 @@ router.post(
 router.post(
   "/upload/multiple/variants",
   handleMultipleFiles('files'),
-  validateSchema(createMultipleFilesSchema),
+  validateSchema(createMultipleFilesSchema(false), 'body', false),
   attachFileExtensions,
   determineSecurityContext,
   measureUploadTime,
@@ -51,7 +51,7 @@ router.post(
 router.post(
   "/upload/multiple/distinct",
   handleMultipleFiles('files'),
-  validateSchema(createMultipleFilesSchema),
+  validateSchema(createMultipleFilesSchema(true), 'body', true),
   attachFileExtensions,
   determineSecurityContext,
   measureUploadTime,
@@ -60,9 +60,9 @@ router.post(
 );
 
 // Endpoint para obtener los archivos publicos sin hacer el resizing
-router.post(
+router.get(
   "/files/public/search",
-  validateSchema(searchFilesSchema),
+  validateSchema(searchFilesSchema, 'query'),
   validatePublicFiles,
   getPublicFiles
 );
