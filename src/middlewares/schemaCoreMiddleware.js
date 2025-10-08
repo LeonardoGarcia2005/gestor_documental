@@ -1,35 +1,38 @@
 import { loggerGlobal } from "../logging/loggerManager.js";
 
-export const validateSchema = (schema, source = 'body') => {
+export const validateSchema = (schema, source = "body", distinct = true) => {
   return (req, res, next) => {
     try {
       let data;
 
       // Determinar de dónde viene la data
-      if (source === 'query') {
-        // Validar query params
+      if (source === "query") {
         data = { ...req.query };
       } else {
-        // Validar body (comportamiento original)
         data = { ...req.body };
 
-        // Determinar si es archivo único o múltiples archivos
+        // Manejar archivos únicos o múltiples
         if (req.file) {
-          // Archivo único
           data.file = req.file;
         } else if (req.files && req.files.length > 0) {
-          // Múltiples archivos
-          const deviceTypesArray = req.body.deviceType 
-            ? req.body.deviceType.split(',').map(type => type.trim())
+          const deviceTypesArray = req.body.deviceType
+            ? req.body.deviceType.split(",").map((type) => type.trim())
             : [];
 
-          data.filesData = req.files.map((file, index) => ({
-            file,
-            deviceType: deviceTypesArray[index] || null,
-          }));
+          if (distinct) {
+            data.filesData = req.files.map((file) => ({
+              file,
+            }));
+          } else {
+            data.filesData = req.files.map((file, index) => ({
+              file,
+              deviceType: deviceTypesArray[index] || null,
+            }));
+          }
         }
       }
 
+      // Validación con Joi
       const { error, value } = schema.validate(data, {
         abortEarly: false,
         allowUnknown: true,
@@ -45,12 +48,11 @@ export const validateSchema = (schema, source = 'body') => {
         });
       }
 
-      // Actualizar el body o query con los valores validados
-      if (source === 'query') {
+      // Actualizar body o query con los valores validados
+      if (source === "query") {
         req.query = { ...req.query, ...value };
-        // Opcional: guardar los códigos parseados para el siguiente middleware
         if (value.codes) {
-          req.validatedCodes = value.codes.split(',');
+          req.validatedCodes = value.codes.split(",");
         }
       } else {
         req.body = { ...req.body, ...value };

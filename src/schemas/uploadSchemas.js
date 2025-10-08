@@ -165,19 +165,19 @@ export const createSingleFileSchema = Joi.object({
 });
 
 // Esquema para múltiples archivos
-export const createMultipleFilesSchema = Joi.object({
+export const createMultipleFilesSchema = (isDistinct = true) => Joi.object({
   ...baseFileSchema,
   typeOfFile: Joi.string()
     .valid(...typesExcluded)
     .required(),
   filesData: Joi.array()
     .items(
-      Joi.object({
-        file: Joi.any().custom(secureFileValidator).required(),
-        deviceType: Joi.string()
-          .valid(...deviceTypes)
-          .required(),
-      })
+      isDistinct
+        ? Joi.object({ file: Joi.any().custom(secureFileValidator).required() }).required()
+        : Joi.object({
+            file: Joi.any().custom(secureFileValidator).required(),
+            deviceType: Joi.string().valid(...deviceTypes).required(),
+          }).required()
     )
     .min(1)
     .max(parseInt(process.env.MAX_FILES_COUNT || "10"))
