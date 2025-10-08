@@ -63,7 +63,7 @@ app.use((req, res, next) => {
 });
 
 // Saludo del gestor documental
-app.get("/", (req, res) => {
+app.get("/gestor_dev/", (req, res) => {
   // Detectar el entorno (puedes ajustar esta lógica según tu configuración)
   const environment = process.env.NODE_ENV || 'development';
   const isProduction = environment === 'production';
@@ -315,7 +315,7 @@ app.get("/", (req, res) => {
   `);
 });
 
-const API_PREFIX = "/gestor/api"
+const API_PREFIX = "/gestor_dev/api"
 
 app.use(`${API_PREFIX}`, filesRouter)
 app.use(`${API_PREFIX}`, companyRouter)
