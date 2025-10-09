@@ -71,7 +71,7 @@ export const validateFilesCompany = async (req, res, next) => {
         if (filesWithCompany.length > 0) {
           return res.status(403).json({
             error: 'No se permite actualizar archivos de empresa',
-            details: `${filesWithCompany.length} archivo(s) pertenecen a empresas`
+            details: `${filesWithCompany.length} archivo(s) pertenecen a empresas entonces debes enviar la regla de seguridad correspondiente`
           });
         }
 
