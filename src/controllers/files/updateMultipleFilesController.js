@@ -7,10 +7,12 @@ import { dbConnectionProvider } from "../../config/db/dbConnectionManager.js";
 import { sanitizeFileName } from "../../lib/formatters.js";
 import { replaceFileFromBuffer, checkFileExists } from "../../services/fileSystem.js";
 import calculateMD5 from "../../lib/calculateMD5.js";
+import { buildFileUrl } from "../../lib/builder.js";
 
 export const updateMultipleFiles = async (req, res) => {
   const fileToUpdate = req.fileToUpdate;
   const processedFiles = req.processedFiles;
+  const { securityLevel } = req.body;
 
   if (!fileToUpdate || fileToUpdate.length === 0) {
     return res.status(400).json({
@@ -24,9 +26,17 @@ export const updateMultipleFiles = async (req, res) => {
     });
   }
 
+  // Determinar si es nivel público
+  const securityLevels = process.env.SECURITY_LEVELS?.split(',') || [];
+  const publicLevel = securityLevels.find((level) =>
+    level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL?.toLowerCase() || 'public')
+  );
+  const isPublic = securityLevel === publicLevel;
+
   // Guardamos copias de seguridad de los archivos originales
   const backupFiles = [];
   const updatedFilePaths = [];
+  const updatedFilesInfo = [];
 
   try {
     const validatedData = [];
@@ -94,7 +104,7 @@ export const updateMultipleFiles = async (req, res) => {
         }
 
         // Actualizar base de datos
-        await filesDAO.updateFile(
+        const updatedFile = await filesDAO.updateFile(
           {
             fileName: data.fileName,
             oldCode: data.oldCode,
@@ -117,6 +127,25 @@ export const updateMultipleFiles = async (req, res) => {
           }
           
           updatedFilePaths.push(result.filePath);
+
+          // Construir información del archivo actualizado
+          const fileInfo = {
+            codeFile: data.oldCode,
+            fileName: data.fileName,
+          };
+
+          // Solo incluir URL si es público
+          if (isPublic) {
+            try {
+              fileInfo.fileUrl = buildFileUrl(result.filePath);
+            } catch (urlError) {
+              loggerGlobal.warn(`No se pudo construir URL para ${data.oldCode}:`, urlError);
+              // Continuar sin la URL si falla
+            }
+          }
+
+          updatedFilesInfo.push(fileInfo);
+
         } catch (fileError) {
           loggerGlobal.error(`Error reemplazando archivo ${data.filePath}:`, fileError);
           throw new Error(`No se pudo reemplazar el archivo físico ${data.oldCode}: ${fileError.message}`);
@@ -137,6 +166,7 @@ export const updateMultipleFiles = async (req, res) => {
       success: true,
       message: "Todos los archivos fueron actualizados exitosamente",
       updatedCount: validatedData.length,
+      files: updatedFilesInfo, // 🆕 Array con código y URL (si es público)
     });
 
   } catch (error) {
