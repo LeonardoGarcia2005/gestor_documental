@@ -25,6 +25,7 @@ export const validateSchema = (schema, source = "body", distinct = true) => {
 
           if (distinct) {
             data.filesData = req.files.map((file) => ({ file }));
+            req.isDistinctFiles = distinct
           } else {
             data.filesData = req.files.map((file, index) => ({
               file,

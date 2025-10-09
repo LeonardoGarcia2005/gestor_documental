@@ -7,7 +7,7 @@ import { securityLevelDAO } from "../dataAccessObjects/securityLevelDAO.js";
 export const applyRouteRule = async (req, res, next) => {
   try {
     const rawValues = req.body;
-    const { securityContext, isForMultiFile } = req;
+    const { securityContext, isForMultiFile, isDistinctFiles } = req;
     const httpMethod = req.method;
 
     if (!securityContext) {
@@ -25,13 +25,12 @@ export const applyRouteRule = async (req, res, next) => {
         : {}),
     };
 
-    // Realizar las consultas comunes una sola vez (incluida la regla de ruta)
-    const [channelExists, documentTypeExists, securityLevel, routeParameters] =
+    // Realizar las consultas comunes una sola vez
+    const [channelExists, documentTypeExists, securityLevel] =
       await Promise.all([
         channelDAO.existsChannel(baseValues.channel),
         documentTypeDAO.existDocumentType(baseValues.documentType),
         securityLevelDAO.getSecurityByType(baseValues.securityLevel),
-        routeRuleDAO.getRouteRuleBySecurityAndCompany(baseValues, httpMethod),
       ]);
 
     if (!channelExists.exists) {
@@ -46,21 +45,20 @@ export const applyRouteRule = async (req, res, next) => {
       });
     }
 
-    if (!routeParameters || routeParameters.length === 0) {
-      return res.status(500).json({
-        error: `No se encontró una regla de ruta para securityLevel: ${baseValues.securityLevel}, hasCompany: ${baseValues.hasCompany}`,
-      });
-    }
-
-    // Procesar rutas según el tipo
-    if (isForMultiFile) {
-      // Múltiples archivos
+    // Distinct files procesa cada archivo individualmente
+    if (isDistinctFiles) {
       const originalProcessed = Array.isArray(req.processedFiles)
         ? req.processedFiles
         : [];
 
-      const enrichedFiles = req.body.filesData.map((fileData, i) => {
+      const enrichedFiles = [];
+
+      // Procesar cada archivo con su propia regla de ruta
+      for (let i = 0; i < req.body.filesData.length; i++) {
+        const fileData = req.body.filesData[i];
         const original = originalProcessed[i] || {};
+
+        // Valores específicos para este archivo (cada uno puede tener deviceType diferente)
         const fileSpecificValues = {
           ...baseValues,
           fileIndex: i,
@@ -68,43 +66,112 @@ export const applyRouteRule = async (req, res, next) => {
           ...(original.resolution ? { resolution: original.resolution } : {}),
         };
 
-        const { routePath, routeParameterValues } = buildRoutePathWithParameters(routeParameters, fileSpecificValues);
+        // Obtener regla de ruta específica para este archivo
+        const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+          fileSpecificValues,
+          httpMethod
+        );
+
+        if (!routeParameters || routeParameters.length === 0) {
+          return res.status(500).json({
+            error: `No se encontró una regla de ruta para el archivo ${i + 1} (deviceType: ${fileData.deviceType})`,
+          });
+        }
+
+        // Construir ruta específica para este archivo
+        const { routePath, routeParameterValues } = buildRoutePathWithParameters(
+          routeParameters,
+          fileSpecificValues
+        );
+
+        enrichedFiles.push({
+          ...original,
+          fileIndex: i,
+          routePath,
+          routeRuleId: routeParameters[0].route_rule_id,
+          originalFile: fileData.file,
+          routeParameterValues,
+          ...(original.resolution
+            ? { dimensions: { resolution: original.resolution } }
+            : {}),
+        });
+      }
+
+      // Guardar resultados enriquecidos
+      req.processedFiles = enrichedFiles;
+      req.processedFilesRoutes = enrichedFiles.map((f) => f.routePath);
+      req.routeParameterValues = enrichedFiles.map(f => f.routeParameterValues);
+    }
+    // Archivos múltiples con la MISMA ruta (mismo deviceType)
+    else if (isForMultiFile) {
+      // Obtener regla de ruta UNA SOLA VEZ (todos comparten la misma)
+      const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+        baseValues,
+        httpMethod
+      );
+
+      if (!routeParameters || routeParameters.length === 0) {
+        return res.status(500).json({
+          error: `No se encontró una regla de ruta para securityLevel: ${baseValues.securityLevel}, hasCompany: ${baseValues.hasCompany}`,
+        });
+      }
+
+      const originalProcessed = Array.isArray(req.processedFiles)
+        ? req.processedFiles
+        : [];
+
+      // Construir ruta UNA SOLA VEZ
+      const { routePath, routeParameterValues } = buildRoutePathWithParameters(
+        routeParameters,
+        baseValues
+      );
+
+      // Aplicar la misma ruta a todos los archivos
+      const enrichedFiles = req.body.filesData.map((fileData, i) => {
+        const original = originalProcessed[i] || {};
 
         return {
           ...original,
           fileIndex: i,
           deviceType: fileData.deviceType,
-          routePath,
+          routePath, // ⭐ Misma ruta para todos
           routeRuleId: routeParameters[0].route_rule_id,
           originalFile: fileData.file,
-          routeParameterValues, // Agregar los valores de parámetros para cada archivo
+          routeParameterValues, // ⭐ Mismos parámetros para todos
           ...(original.resolution
             ? { dimensions: { resolution: original.resolution } }
             : {}),
         };
       });
 
-      // Guardar resultados enriquecidos en el request
       req.processedFiles = enrichedFiles;
       req.processedFilesRoutes = enrichedFiles.map((f) => f.routePath);
-      
-      // Para múltiples archivos, guardar todos los route_parameter_values en un array
       req.routeParameterValues = enrichedFiles.map(f => f.routeParameterValues);
-    } else {
-      // Archivo único
-      const singleFileValues = {
-        ...baseValues,
-      };
+    }
+    // Archivo único
+    else {
+      const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+        baseValues,
+        httpMethod
+      );
 
-      // Construir ruta para archivo único
-      const { routePath, routeParameterValues } = buildRoutePathWithParameters(routeParameters, singleFileValues);
+      if (!routeParameters || routeParameters.length === 0) {
+        return res.status(500).json({
+          error: `No se encontró una regla de ruta para securityLevel: ${baseValues.securityLevel}, hasCompany: ${baseValues.hasCompany}`,
+        });
+      }
+
+      const { routePath, routeParameterValues } = buildRoutePathWithParameters(
+        routeParameters,
+        baseValues
+      );
 
       req.routePath = routePath;
       req.routeRuleId = routeParameters[0].route_rule_id;
-      req.routeParameterValues = routeParameterValues; // Agregar valores de parámetros para archivo único
+      req.routeParameterValues = routeParameterValues;
     }
 
-    // Datos comunes para ambos casos
+    // Datos comunes para todos los casos
     req.channelId = channelExists.id;
     req.documentTypeId = documentTypeExists.id;
     req.securityLevelId = securityLevel.id;
@@ -118,15 +185,12 @@ export const applyRouteRule = async (req, res, next) => {
   }
 };
 
-// Construye la ruta basada en los parámetros de ruta y valores específicos
-// Ahora también retorna los route_parameter_values
 const buildRoutePathWithParameters = (routeParameters, values) => {
   const separator = routeParameters[0].separator_char || "/";
   const routeParts = [];
   const dynamicValues = {};
   const routeParameterValues = [];
 
-  // Ordenar parámetros por position_order para asegurar el orden correcto
   const sortedParameters = routeParameters.sort((a, b) => a.position_order - b.position_order);
 
   // Pre-calcular valores dinámicos
@@ -139,7 +203,7 @@ const buildRoutePathWithParameters = (routeParameters, values) => {
     }
   }
 
-  // Construir partes de la ruta y crear route_parameter_values
+  // Construir partes de la ruta
   for (const param of sortedParameters) {
     let paramValue = null;
 
@@ -159,11 +223,10 @@ const buildRoutePathWithParameters = (routeParameters, values) => {
       routeParts.push(paramValue);
     }
 
-    // Agregar al array de route_parameter_values (incluso si paramValue es vacío)
     routeParameterValues.push({
       route_parameter_id: parseInt(param.route_parameter_id),
       position_order: param.position_order,
-      value: paramValue || '' // Si no hay valor, usar string vacío
+      value: paramValue || ''
     });
   }
 

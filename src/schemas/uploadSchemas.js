@@ -106,7 +106,7 @@ export const createMultipleFilesSchema = (isDistinct = true) => Joi.object({
           }).required()
     )
     .min(1)
-    .max(parseInt(process.env.MAX_FILES_COUNT || "10"))
+    .max(parseInt(process.env.MAX_FILES_COUNT || "20"))
     .required()
     .messages({
       "array.min": "Debe enviar al menos 1 archivo",
