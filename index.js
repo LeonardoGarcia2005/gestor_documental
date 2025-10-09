@@ -20,7 +20,8 @@ const corsOptions = {
     'https://www.pangeatech.com.uy:8888', 
     'https://agendateya.com.uy', 
     'https://agendateya.com.co', 
-    'https://agendateya.com.ve'
+    'https://agendateya.com.ve',
+    'https://www.pangeatech.com.uy:7433'
   ], // Origen permitido
   credentials: true, // Permitir credenciales
   allowedHeaders: ['sessionID', 'content-type', 'authorization'],

@@ -6,28 +6,30 @@ export const validateSchema = (schema, source = "body", distinct = true) => {
       let data = {};
       const method = req.method;
 
-      if (method === "POST") {
+      // Si source es "query", SIEMPRE usar query independientemente del método
+      if (source === "query") {
+        data = { ...req.query };
+        loggerGlobal.info(`Validando desde query params: ${JSON.stringify(req.query)}`);
+      } 
+      // Si source es "body" o no especificado, procesar según el método
+      else if (method === "POST") {
         // Validación para creación
-        if (source === "query") {
-          data = { ...req.query };
-        } else {
-          data = { ...req.body };
+        data = { ...req.body };
 
-          if (req.file) {
-            data.file = req.file;
-          } else if (req.files && req.files.length > 0) {
-            const deviceTypesArray = req.body.deviceType
-              ? req.body.deviceType.split(",").map((type) => type.trim())
-              : [];
+        if (req.file) {
+          data.file = req.file;
+        } else if (req.files && req.files.length > 0) {
+          const deviceTypesArray = req.body.deviceType
+            ? req.body.deviceType.split(",").map((type) => type.trim())
+            : [];
 
-            if (distinct) {
-              data.filesData = req.files.map((file) => ({ file }));
-            } else {
-              data.filesData = req.files.map((file, index) => ({
-                file,
-                deviceType: deviceTypesArray[index] || null,
-              }));
-            }
+          if (distinct) {
+            data.filesData = req.files.map((file) => ({ file }));
+          } else {
+            data.filesData = req.files.map((file, index) => ({
+              file,
+              deviceType: deviceTypesArray[index] || null,
+            }));
           }
         }
       } else if (method === "PUT") {
@@ -51,6 +53,9 @@ export const validateSchema = (schema, source = "body", distinct = true) => {
         };
 
         loggerGlobal.info(`Archivos para actualizar: ${fileToUpdate.length}`);
+      } else {
+        // Para otros métodos (GET, DELETE, etc.), usar body por defecto
+        data = { ...req.body };
       }
 
       // Validación con Joi
@@ -69,7 +74,7 @@ export const validateSchema = (schema, source = "body", distinct = true) => {
         });
       }
 
-      // Actualizar body/query
+      // Actualizar body/query según source
       if (source === "query") {
         req.query = { ...req.query, ...value };
         if (value.codes) req.validatedCodes = value.codes.split(",");

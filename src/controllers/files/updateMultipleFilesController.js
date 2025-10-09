@@ -1,15 +1,18 @@
 import { filesDAO } from "../../dataAccessObjects/filesDAO.js";
 import fs from "fs/promises";
+import path from "path";
 import { fileParameterValueDAO } from "../../dataAccessObjects/fileParameterValueDAO.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
 import { dbConnectionProvider } from "../../config/db/dbConnectionManager.js";
 import { sanitizeFileName } from "../../lib/formatters.js";
 import { replaceFileFromBuffer, checkFileExists } from "../../services/fileSystem.js";
 import calculateMD5 from "../../lib/calculateMD5.js";
+import { buildFileUrl } from "../../lib/builder.js";
 
 export const updateMultipleFiles = async (req, res) => {
   const fileToUpdate = req.fileToUpdate;
   const processedFiles = req.processedFiles;
+  const { securityLevel } = req.body;
 
   if (!fileToUpdate || fileToUpdate.length === 0) {
     return res.status(400).json({
@@ -23,14 +26,22 @@ export const updateMultipleFiles = async (req, res) => {
     });
   }
 
+  // Determinar si es nivel público
+  const securityLevels = process.env.SECURITY_LEVELS?.split(',') || [];
+  const publicLevel = securityLevels.find((level) =>
+    level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL?.toLowerCase() || 'public')
+  );
+  const isPublic = securityLevel === publicLevel;
+
   // Guardamos copias de seguridad de los archivos originales
   const backupFiles = [];
   const updatedFilePaths = [];
+  const updatedFilesInfo = [];
 
   try {
     const validatedData = [];
 
-    // Validación y preparación (sin modificar nada aún)
+    // FASE 1: Validación y preparación (sin modificar nada aún)
     for (let i = 0; i < fileToUpdate.length; i++) {
       const f = fileToUpdate[i];
       const processed = processedFiles[i];
@@ -80,7 +91,12 @@ export const updateMultipleFiles = async (req, res) => {
           const originalExists = await checkFileExists(data.filePath);
           if (originalExists) {
             await fs.copyFile(data.filePath, backupPath);
-            backupFiles.push({ original: data.filePath, backup: backupPath });
+            // Guardamos el nombre ANTIGUO del archivo
+            backupFiles.push({ 
+              original: data.filePath, 
+              backup: backupPath,
+              oldFileName: path.basename(data.filePath)
+            });
           }
         } catch (backupError) {
           loggerGlobal.error(`Error creando backup de ${data.filePath}:`, backupError);
@@ -88,7 +104,7 @@ export const updateMultipleFiles = async (req, res) => {
         }
 
         // Actualizar base de datos
-        await filesDAO.updateFile(
+        const updatedFile = await filesDAO.updateFile(
           {
             fileName: data.fileName,
             oldCode: data.oldCode,
@@ -101,8 +117,35 @@ export const updateMultipleFiles = async (req, res) => {
 
         // Reemplazar archivo físico
         try {
-          await replaceFileFromBuffer(data.filePath, data.buffer, data.fileName);
-          updatedFilePaths.push(data.filePath);
+          const result = await replaceFileFromBuffer(data.filePath, data.buffer, data.fileName);
+          
+          // ACTUALIZAR el backup con la NUEVA ruta después del rename
+          const backupIndex = backupFiles.findIndex(b => b.original === data.filePath);
+          if (backupIndex !== -1) {
+            backupFiles[backupIndex].original = result.filePath;
+            backupFiles[backupIndex].newFileName = data.fileName;
+          }
+          
+          updatedFilePaths.push(result.filePath);
+
+          // Construir información del archivo actualizado
+          const fileInfo = {
+            codeFile: data.oldCode,
+            fileName: data.fileName,
+          };
+
+          // Solo incluir URL si es público
+          if (isPublic) {
+            try {
+              fileInfo.fileUrl = buildFileUrl(result.filePath);
+            } catch (urlError) {
+              loggerGlobal.warn(`No se pudo construir URL para ${data.oldCode}:`, urlError);
+              // Continuar sin la URL si falla
+            }
+          }
+
+          updatedFilesInfo.push(fileInfo);
+
         } catch (fileError) {
           loggerGlobal.error(`Error reemplazando archivo ${data.filePath}:`, fileError);
           throw new Error(`No se pudo reemplazar el archivo físico ${data.oldCode}: ${fileError.message}`);
@@ -123,21 +166,34 @@ export const updateMultipleFiles = async (req, res) => {
       success: true,
       message: "Todos los archivos fueron actualizados exitosamente",
       updatedCount: validatedData.length,
+      files: updatedFilesInfo, // 🆕 Array con código y URL (si es público)
     });
 
   } catch (error) {
     loggerGlobal.error("Error en updateMultipleFiles:", error);
 
-    // Restaurar archivos desde backups
+    // ROLLBACK - Restaurar archivos desde backups
     if (backupFiles.length > 0) {
       loggerGlobal.info("Iniciando rollback de archivos...");
-      for (const { original, backup } of backupFiles) {
+      for (const { original, backup, oldFileName } of backupFiles) {
         try {
           const backupExists = await checkFileExists(backup);
           if (backupExists) {
-            await fs.copyFile(backup, original);
+            // Calcular la ruta original (con el nombre ANTIGUO)
+            const dir = path.dirname(original);
+            const originalPath = oldFileName ? path.join(dir, oldFileName) : original;
+            
+            // Primero, eliminar el archivo nuevo si existe
+            const newFileExists = await checkFileExists(original);
+            if (newFileExists) {
+              await fs.unlink(original);
+              loggerGlobal.info(`Archivo nuevo eliminado: ${original}`);
+            }
+            
+            // Restaurar el backup con su nombre original
+            await fs.copyFile(backup, originalPath);
             await fs.unlink(backup);
-            loggerGlobal.info(`Archivo restaurado: ${original}`);
+            loggerGlobal.info(`Archivo restaurado: ${originalPath}`);
           }
         } catch (rollbackError) {
           loggerGlobal.error(`Error en rollback de ${original}:`, rollbackError);
