@@ -1,6 +1,6 @@
 
 import { fileExtensions } from "../dataAccessObjects/enumDAO.js";
-import fileTypeFromBuffer from "file-type";
+import { fileTypeFromBuffer } from "file-type";
 
 // Mapa extensión ↔ mimetype (basado en tu tabla)
 const EXTENSION_MIME_MAP = {
@@ -19,7 +19,7 @@ const EXTENSION_MIME_MAP = {
 };
 
 // Validador personalizado para archivos con validación de seguridad
-const secureFileValidator = async (value, helpers) => {
+export const secureFileValidator = async (value, helpers) => {
   if (!value || !value.buffer) {
     return helpers.error("file.required");
   }

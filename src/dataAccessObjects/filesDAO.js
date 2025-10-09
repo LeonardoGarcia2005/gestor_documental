@@ -30,6 +30,42 @@ const getFileByCode = async (codeFile) => {
   }
 };
 
+const getFilesByCodes = async (codes) => {
+  try {
+    if (!Array.isArray(codes) || codes.length === 0) {
+      return [];
+    }
+
+    // Crear placeholders para PostgreSQL: $1, $2, $3, etc.
+    const placeholders = codes.map((_, index) => `$${index + 1}`).join(',');
+    
+    const queryFiles = `
+      SELECT 
+        f.id,
+        f.code,
+        f.file_name,
+        f.route_rule_id,
+        f.company_id
+      FROM file AS f
+      WHERE f.code IN (${placeholders})
+    `;
+
+    const result = await dbConnectionProvider.getAll(
+      queryFiles,
+      codes
+    );
+    
+    return result || [];
+  } catch (error) {
+    loggerGlobal.error("Error al obtener archivos por códigos", {
+      error: error.message,
+      stack: error.stack,
+      codes,
+    });
+    throw new Error(`Error al obtener archivos: ${error.message}`);
+  }
+};
+
 // Consulta parametrizada para obtener archivo por md5 y route_rule_id
 const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
   try {
@@ -255,7 +291,7 @@ const changeStatusFile = async (codeFile, isActive) => {
 };
 
 // Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
-const existSomeFileWithCompany = async (codes, securityLevelType = 'private') => {
+const existSomePrivateFile = async (codes, securityLevelType = 'private') => {
   try {
 
     const queryFile = `
@@ -285,13 +321,13 @@ const existSomeFileWithCompany = async (codes, securityLevelType = 'private') =>
   }
 };
 
-const updateFile = async (fileName, codeFile, fileSize, md5, t) => {
+const updateFile = async ({fileName, oldCode, fileSize, md5, extensionId}, t) => {
   try {
     const result = await dbConnectionProvider.updateOne(
       "file",
-      { file_name: fileName, file_size: fileSize, file_hash_md5: md5 },
+      { file_name: fileName, size_bytes: fileSize, file_hash_md5: md5, extension_id: extensionId },
       t,
-      { code: codeFile }
+      { code: oldCode }
     );
 
     return result;
@@ -299,7 +335,7 @@ const updateFile = async (fileName, codeFile, fileSize, md5, t) => {
     loggerGlobal.error("Error al actualizar el archivo", {
       error: error.message,
       stack: error.stack,
-      codeFile,
+      oldCode,
       fileName,
       fileSize,
       md5,
@@ -315,8 +351,10 @@ const filesDAO = {
   insertFile,
   changeStatusFile,
   insertFileVariant,
-  existSomeFileWithCompany,
-  getFileByCode
+  existSomePrivateFile,
+  getFileByCode,
+  getFilesByCodes,
+  updateFile
 };
 
 export { filesDAO };

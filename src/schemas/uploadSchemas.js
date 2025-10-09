@@ -8,7 +8,7 @@ import {
 } from "../dataAccessObjects/enumDAO.js";
 import BaseJoi from "joi";
 import JoiDate from "@joi/date";
-import { secureFileValidator } from "./secureFileValidator.js";
+import { secureFileValidator } from "../lib/secureFileValidator.js";
 
 const Joi = BaseJoi.extend(JoiDate);
 

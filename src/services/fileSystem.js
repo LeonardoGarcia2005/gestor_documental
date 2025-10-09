@@ -22,6 +22,42 @@ const applyDirPermissionsRecursively = async (dirPath) => {
   }
 };
 
+// Reemplaza un archivo existente por uno nuevo desde un buffer
+export const replaceFileFromBuffer = async (filePath, buffer, newFileName) => {
+  try {
+    // Verificar si el archivo existe
+    const fileExists = await checkFileExists(filePath);
+    
+    if (fileExists) {
+      // Eliminar el archivo existente
+      await fs.unlink(filePath);
+      loggerGlobal.info(`Archivo existente eliminado: ${filePath}`);
+    }
+
+    // Obtener el directorio y construir la nueva ruta con el nuevo nombre
+    const dir = path.dirname(filePath);
+    const newFilePath = path.join(dir, newFileName);
+
+    // Asegurar que el directorio existe
+    await fs.mkdir(dir, { recursive: true });
+
+    // Guardar el nuevo archivo con el nuevo nombre
+    await fs.writeFile(newFilePath, buffer);
+
+    // Aplicar permisos solo si es Linux o macOS
+    if (isUnixSystem) {
+      await applyDirPermissionsRecursively(dir);
+      await fs.chmod(newFilePath, 0o755);
+    }
+
+    loggerGlobal.info(`Archivo reemplazado exitosamente: ${filePath} → ${newFilePath}`);
+    return { success: true, filePath: newFilePath };
+  } catch (error) {
+    loggerGlobal.error(`Error reemplazando archivo ${filePath}:`, error);
+    throw new Error(`No se pudo reemplazar el archivo: ${error.message}`);
+  }
+};
+
 // Guarda un archivo desde un buffer
 export const saveFileFromBuffer = async (filePath, buffer) => {
   try {

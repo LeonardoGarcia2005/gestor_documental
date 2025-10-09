@@ -11,11 +11,12 @@ import { createSingleFileSchema, createMultipleFilesSchema } from "../schemas/up
 import { changeStatusFileSchema } from "../schemas/changeStatusFileShema.js";
 import { changeStatusFile } from "../controllers/files/changeStatusFileController.js";
 import { searchFilesSchema } from "../schemas/searchFilesSchema.js"
-import { validateFileWithCompany } from "../middlewares/validateFileWithCompanyMiddleware.js";
+import { validateFilesCompany } from "../middlewares/validateFilesMiddleware.js";
 import { validatePublicFiles } from "../middlewares/validatePublicFilesMiddleware.js";
 import { getPublicFiles } from "../controllers/files/getPublicFilesController.js";
 import { updateMultipleFiles } from "../controllers/files/updateMultipleFilesController.js";
 import { updateMultipleFilesSchema } from "../schemas/updateSchemas.js";
+import { authenticateContext } from "../middlewares/authenticateMiddleware.js";
 
 const router = Router();
 
@@ -62,12 +63,22 @@ router.post(
   uploadMultipleDistinctFiles
 );
 
+// Endpoint para obtener los archivos publicos sin hacer el resizing
+router.get(
+  "/files/public/search",
+  validateSchema(searchFilesSchema, 'query'),
+  validatePublicFiles,
+  getPublicFiles
+);
+
 // Endpoint para actualizar MÚLTIPLES archivos
-router.patch(
+router.put(
   "/update/multiple",
   handleMultipleFiles('files'),
-  validateSchema(updateMultipleFilesSchema),
-  validateFileWithCompany,
+  validateSchema(updateMultipleFilesSchema, "body", false),
+  authenticateContext,
+  attachFileExtensions,
+  validateFilesCompany,
   updateMultipleFiles
 );
 
