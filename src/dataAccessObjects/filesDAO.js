@@ -30,6 +30,42 @@ const getFileByCode = async (codeFile) => {
   }
 };
 
+const getFilesByCodes = async (codes) => {
+  try {
+    if (!Array.isArray(codes) || codes.length === 0) {
+      return [];
+    }
+
+    // Crear placeholders para PostgreSQL: $1, $2, $3, etc.
+    const placeholders = codes.map((_, index) => `$${index + 1}`).join(',');
+    
+    const queryFiles = `
+      SELECT 
+        f.id,
+        f.code,
+        f.file_name,
+        f.route_rule_id,
+        f.company_id
+      FROM file AS f
+      WHERE f.code IN (${placeholders})
+    `;
+
+    const result = await dbConnectionProvider.getAll(
+      queryFiles,
+      codes
+    );
+    
+    return result || [];
+  } catch (error) {
+    loggerGlobal.error("Error al obtener archivos por códigos", {
+      error: error.message,
+      stack: error.stack,
+      codes,
+    });
+    throw new Error(`Error al obtener archivos: ${error.message}`);
+  }
+};
+
 // Consulta parametrizada para obtener archivo por md5 y route_rule_id
 const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
   try {
@@ -255,7 +291,7 @@ const changeStatusFile = async (codeFile, isActive) => {
 };
 
 // Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
-const existSomePrivateFile = async (codes) => {
+const existSomePrivateFile = async (codes, securityLevelType = 'private') => {
   try {
 
     const queryFile = `
@@ -264,10 +300,11 @@ const existSomePrivateFile = async (codes) => {
         f.code,
         f.company_id
       FROM file AS f
-      WHERE f.code = ANY($1::text[]) AND f.company_id IS NOT NULL
+      JOIN security_level AS sl ON f.security_level_id = sl.id
+      WHERE f.code = ANY($1::text[]) AND sl.type = $2 AND f.company_id IS NOT NULL
     `;
 
-    const values = [codes];
+    const values = [codes, securityLevelType];
 
     const result = await dbConnectionProvider.getAll(
       queryFile,
@@ -284,6 +321,30 @@ const existSomePrivateFile = async (codes) => {
   }
 };
 
+const updateFile = async ({fileName, oldCode, fileSize, md5, extensionId}, t) => {
+  try {
+    const result = await dbConnectionProvider.updateOne(
+      "file",
+      { file_name: fileName, size_bytes: fileSize, file_hash_md5: md5, extension_id: extensionId },
+      t,
+      { code: oldCode }
+    );
+
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al actualizar el archivo", {
+      error: error.message,
+      stack: error.stack,
+      oldCode,
+      fileName,
+      fileSize,
+      md5,
+    });
+    throw new Error(`Error al actualizar el archivo: ${error.message}`);
+  }
+};
+
+
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
   getFilesByMd5AndRouteRuleIds,
@@ -291,7 +352,9 @@ const filesDAO = {
   changeStatusFile,
   insertFileVariant,
   existSomePrivateFile,
-  getFileByCode
+  getFileByCode,
+  getFilesByCodes,
+  updateFile
 };
 
 export { filesDAO };

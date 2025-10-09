@@ -3,33 +3,54 @@ import { loggerGlobal } from "../logging/loggerManager.js";
 export const validateSchema = (schema, source = "body", distinct = true) => {
   return (req, res, next) => {
     try {
-      let data;
+      let data = {};
+      const method = req.method;
 
-      // Determinar de dónde viene la data
-      if (source === "query") {
-        data = { ...req.query };
-      } else {
-        data = { ...req.body };
+      if (method === "POST") {
+        // Validación para creación
+        if (source === "query") {
+          data = { ...req.query };
+        } else {
+          data = { ...req.body };
 
-        // Manejar archivos únicos o múltiples
-        if (req.file) {
-          data.file = req.file;
-        } else if (req.files && req.files.length > 0) {
-          const deviceTypesArray = req.body.deviceType
-            ? req.body.deviceType.split(",").map((type) => type.trim())
-            : [];
+          if (req.file) {
+            data.file = req.file;
+          } else if (req.files && req.files.length > 0) {
+            const deviceTypesArray = req.body.deviceType
+              ? req.body.deviceType.split(",").map((type) => type.trim())
+              : [];
 
-          if (distinct) {
-            data.filesData = req.files.map((file) => ({
-              file,
-            }));
-          } else {
-            data.filesData = req.files.map((file, index) => ({
-              file,
-              deviceType: deviceTypesArray[index] || null,
-            }));
+            if (distinct) {
+              data.filesData = req.files.map((file) => ({ file }));
+            } else {
+              data.filesData = req.files.map((file, index) => ({
+                file,
+                deviceType: deviceTypesArray[index] || null,
+              }));
+            }
           }
         }
+      } else if (method === "PUT") {
+        // Validación para actualización
+        const codesArray = req.body.codes
+          ? req.body.codes.split(",").map((code) => code.trim())
+          : [];
+
+        const fileToUpdate = Array.isArray(req.files)
+          ? req.files.map((file, index) => ({
+              code: codesArray[index] || null,
+              file,
+            }))
+          : [];
+
+        req.fileToUpdate = fileToUpdate;
+
+        data = {
+          ...req.body,
+          fileToUpdate,
+        };
+
+        loggerGlobal.info(`Archivos para actualizar: ${fileToUpdate.length}`);
       }
 
       // Validación con Joi
@@ -48,12 +69,10 @@ export const validateSchema = (schema, source = "body", distinct = true) => {
         });
       }
 
-      // Actualizar body o query con los valores validados
+      // Actualizar body/query
       if (source === "query") {
         req.query = { ...req.query, ...value };
-        if (value.codes) {
-          req.validatedCodes = value.codes.split(",");
-        }
+        if (value.codes) req.validatedCodes = value.codes.split(",");
       } else {
         req.body = { ...req.body, ...value };
       }
