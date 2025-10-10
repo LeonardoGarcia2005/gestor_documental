@@ -293,6 +293,8 @@ const changeStatusFile = async (codeFile, isActive) => {
 // Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
 const existSomePrivateFile = async (codes, securityLevelType = 'private') => {
   try {
+    // Asegurar que codes sea un array
+    const codesArray = Array.isArray(codes) ? codes : [codes];
 
     const queryFile = `
       SELECT 
@@ -301,10 +303,10 @@ const existSomePrivateFile = async (codes, securityLevelType = 'private') => {
         f.company_id
       FROM file AS f
       JOIN security_level AS sl ON f.security_level_id = sl.id
-      WHERE f.code = ANY($1::text[]) AND sl.type = $2 AND f.company_id IS NOT NULL
+      WHERE f.code = ANY($1) AND sl.type = $2 AND f.company_id IS NOT NULL
     `;
 
-    const values = [codes, securityLevelType];
+    const values = [codesArray, securityLevelType];
 
     const result = await dbConnectionProvider.getAll(
       queryFile,
