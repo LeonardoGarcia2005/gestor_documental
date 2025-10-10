@@ -120,24 +120,31 @@ export const applyRouteRule = async (req, res, next) => {
         ? req.processedFiles
         : [];
 
-      // Construir ruta UNA SOLA VEZ
-      const { routePath, routeParameterValues } = buildRoutePathWithParameters(
-        routeParameters,
-        baseValues
-      );
-
       // Aplicar la misma ruta a todos los archivos
       const enrichedFiles = req.body.filesData.map((fileData, i) => {
         const original = originalProcessed[i] || {};
+
+        // Crear valores específicos para cada archivo incluyendo su resolución
+        const fileSpecificValues = {
+          ...baseValues,
+          deviceType: fileData.deviceType,
+          ...(original.resolution ? { resolution: original.resolution } : {}),
+        };
+
+        // Construir ruta para este archivo con su resolución específica
+        const { routePath, routeParameterValues } = buildRoutePathWithParameters(
+          routeParameters,
+          fileSpecificValues
+        );
 
         return {
           ...original,
           fileIndex: i,
           deviceType: fileData.deviceType,
-          routePath, // ⭐ Misma ruta para todos
+          routePath,
           routeRuleId: routeParameters[0].route_rule_id,
           originalFile: fileData.file,
-          routeParameterValues, // ⭐ Mismos parámetros para todos
+          routeParameterValues,
           ...(original.resolution
             ? { dimensions: { resolution: original.resolution } }
             : {}),

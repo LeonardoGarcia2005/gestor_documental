@@ -9,8 +9,10 @@ export const validateSchema = (schema, source = "body", distinct = true) => {
       // Si source es "query", SIEMPRE usar query independientemente del método
       if (source === "query") {
         data = { ...req.query };
-        loggerGlobal.info(`Validando desde query params: ${JSON.stringify(req.query)}`);
-      } 
+        loggerGlobal.info(
+          `Validando desde query params: ${JSON.stringify(req.query)}`
+        );
+      }
       // Si source es "body" o no especificado, procesar según el método
       else if (method === "POST") {
         // Validación para creación
@@ -25,7 +27,7 @@ export const validateSchema = (schema, source = "body", distinct = true) => {
 
           if (distinct) {
             data.filesData = req.files.map((file) => ({ file }));
-            req.isDistinctFiles = distinct
+            req.isDistinctFiles = distinct;
           } else {
             data.filesData = req.files.map((file, index) => ({
               file,
@@ -35,9 +37,17 @@ export const validateSchema = (schema, source = "body", distinct = true) => {
         }
       } else if (method === "PUT") {
         // Validación para actualización
-        const codesArray = req.body.codes
-          ? req.body.codes.split(",").map((code) => code.trim())
-          : [];
+        let codesArray = [];
+
+        if (req.body.codes) {
+          if (Array.isArray(req.body.codes)) {
+            // Si ya es un array, úsalo directamente
+            codesArray = req.body.codes.map((code) => code.trim());
+          } else if (typeof req.body.codes === "string") {
+            // Si es string, divide por comas
+            codesArray = req.body.codes.split(",").map((code) => code.trim());
+          }
+        }
 
         const fileToUpdate = Array.isArray(req.files)
           ? req.files.map((file, index) => ({
