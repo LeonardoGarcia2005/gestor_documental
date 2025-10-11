@@ -8,8 +8,12 @@ const getFileByCode = async (codeFile) => {
         f.id,
         f.code,
         f.file_name,
-        f.route_rule_id
+        f.route_rule_id,
+        sl.type AS "securityLevel",
+        dt.name AS "documentType"
       FROM file AS f
+      JOIN security_level sl ON f.security_level_id = sl.id
+      JOIN document_type dt ON f.document_type_id = dt.id
       WHERE f.code = $1
     `;
 
@@ -38,7 +42,7 @@ const getFilesByCodes = async (codes) => {
 
     // Crear placeholders para PostgreSQL: $1, $2, $3, etc.
     const placeholders = codes.map((_, index) => `$${index + 1}`).join(',');
-    
+
     const queryFiles = `
       SELECT 
         f.id,
@@ -54,7 +58,7 @@ const getFilesByCodes = async (codes) => {
       queryFiles,
       codes
     );
-    
+
     return result || [];
   } catch (error) {
     loggerGlobal.error("Error al obtener archivos por códigos", {
@@ -321,7 +325,7 @@ const existSomePrivateFile = async (codes, securityLevelType = 'private') => {
   }
 };
 
-const updateFile = async ({fileName, oldCode, fileSize, md5, extensionId}, t) => {
+const updateFile = async ({ fileName, oldCode, fileSize, md5, extensionId }, t) => {
   try {
     const result = await dbConnectionProvider.updateOne(
       "file",

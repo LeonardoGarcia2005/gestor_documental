@@ -16,6 +16,11 @@ export const applyRouteRule = async (req, res, next) => {
       });
     }
 
+    // Validamos que si tiene empresa en true y si es publico le colocamos el valor static
+    if (rawValues.hasCompany && securityContext.securityLevel === "public") {
+      rawValues.storage = "static";
+    }
+
     // Valores base compartidos
     const baseValues = {
       ...rawValues,
@@ -67,7 +72,7 @@ export const applyRouteRule = async (req, res, next) => {
         };
 
         // Obtener regla de ruta específica para este archivo
-        const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+        const routeParameters = await routeRuleDAO.getRouteRuleComplete(
           fileSpecificValues,
           httpMethod
         );
@@ -105,7 +110,7 @@ export const applyRouteRule = async (req, res, next) => {
     // Archivos múltiples con la MISMA ruta (mismo deviceType)
     else if (isForMultiFile) {
       // Obtener regla de ruta UNA SOLA VEZ (todos comparten la misma)
-      const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+      const routeParameters = await routeRuleDAO.getRouteRuleComplete(
         baseValues,
         httpMethod
       );
@@ -134,10 +139,10 @@ export const applyRouteRule = async (req, res, next) => {
           ...original,
           fileIndex: i,
           deviceType: fileData.deviceType,
-          routePath, // ⭐ Misma ruta para todos
+          routePath,
           routeRuleId: routeParameters[0].route_rule_id,
           originalFile: fileData.file,
-          routeParameterValues, // ⭐ Mismos parámetros para todos
+          routeParameterValues,
           ...(original.resolution
             ? { dimensions: { resolution: original.resolution } }
             : {}),
@@ -150,7 +155,7 @@ export const applyRouteRule = async (req, res, next) => {
     }
     // Archivo único
     else {
-      const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+      const routeParameters = await routeRuleDAO.getRouteRuleComplete(
         baseValues,
         httpMethod
       );
@@ -185,7 +190,7 @@ export const applyRouteRule = async (req, res, next) => {
   }
 };
 
-const buildRoutePathWithParameters = (routeParameters, values) => {
+export const buildRoutePathWithParameters = (routeParameters, values) => {
   const separator = routeParameters[0].separator_char || "/";
   const routeParts = [];
   const dynamicValues = {};

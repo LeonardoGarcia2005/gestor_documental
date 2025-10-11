@@ -6,7 +6,7 @@
   "db": {
     "host": "200.40.68.122",
     "port": 5432,
-    "name": "gestor_documental_prod",
+    "name": "gestor_documental_nuevos_ajustes",
     "user": "postgres",
     "password": "p4ng34t3ch"
   },
