@@ -87,7 +87,7 @@ const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
     const values = [routeRuleId, md5];
 
     // Ejecución de la consulta
-    const resultFile = await dbConnectionProvider.firstOrDefault(
+    const resultFile = await dbConnectionProvider.getAll(
       queryFile,
       values
     );

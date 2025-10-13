@@ -67,22 +67,23 @@ export const applyRouteRule = async (req, res, next) => {
         };
 
         // Obtener regla de ruta específica para este archivo
-        const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
-          fileSpecificValues,
-          httpMethod
-        );
+        const routeParameters =
+          await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+            fileSpecificValues,
+            httpMethod
+          );
 
         if (!routeParameters || routeParameters.length === 0) {
           return res.status(500).json({
-            error: `No se encontró una regla de ruta para el archivo ${i + 1} (deviceType: ${fileData.deviceType})`,
+            error: `No se encontró una regla de ruta para el archivo ${
+              i + 1
+            } (deviceType: ${fileData.deviceType})`,
           });
         }
 
         // Construir ruta específica para este archivo
-        const { routePath, routeParameterValues } = buildRoutePathWithParameters(
-          routeParameters,
-          fileSpecificValues
-        );
+        const { routePath, routeParameterValues } =
+          buildRoutePathWithParameters(routeParameters, fileSpecificValues);
 
         enrichedFiles.push({
           ...original,
@@ -100,15 +101,18 @@ export const applyRouteRule = async (req, res, next) => {
       // Guardar resultados enriquecidos
       req.processedFiles = enrichedFiles;
       req.processedFilesRoutes = enrichedFiles.map((f) => f.routePath);
-      req.routeParameterValues = enrichedFiles.map(f => f.routeParameterValues);
+      req.routeParameterValues = enrichedFiles.map(
+        (f) => f.routeParameterValues
+      );
     }
     // Archivos múltiples con la MISMA ruta (mismo deviceType)
     else if (isForMultiFile) {
       // Obtener regla de ruta UNA SOLA VEZ (todos comparten la misma)
-      const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
-        baseValues,
-        httpMethod
-      );
+      const routeParameters =
+        await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+          baseValues,
+          httpMethod
+        );
 
       if (!routeParameters || routeParameters.length === 0) {
         return res.status(500).json({
@@ -132,10 +136,8 @@ export const applyRouteRule = async (req, res, next) => {
         };
 
         // Construir ruta para este archivo con su resolución específica
-        const { routePath, routeParameterValues } = buildRoutePathWithParameters(
-          routeParameters,
-          fileSpecificValues
-        );
+        const { routePath, routeParameterValues } =
+          buildRoutePathWithParameters(routeParameters, fileSpecificValues);
 
         return {
           ...original,
@@ -153,14 +155,17 @@ export const applyRouteRule = async (req, res, next) => {
 
       req.processedFiles = enrichedFiles;
       req.processedFilesRoutes = enrichedFiles.map((f) => f.routePath);
-      req.routeParameterValues = enrichedFiles.map(f => f.routeParameterValues);
+      req.routeParameterValues = enrichedFiles.map(
+        (f) => f.routeParameterValues
+      );
     }
     // Archivo único
     else {
-      const routeParameters = await routeRuleDAO.getRouteRuleBySecurityAndCompany(
-        baseValues,
-        httpMethod
-      );
+      const routeParameters =
+        await routeRuleDAO.getRouteRuleBySecurityAndCompany(
+          baseValues,
+          httpMethod
+        );
 
       if (!routeParameters || routeParameters.length === 0) {
         return res.status(500).json({
@@ -198,7 +203,9 @@ const buildRoutePathWithParameters = (routeParameters, values) => {
   const dynamicValues = {};
   const routeParameterValues = [];
 
-  const sortedParameters = routeParameters.sort((a, b) => a.position_order - b.position_order);
+  const sortedParameters = routeParameters.sort(
+    (a, b) => a.position_order - b.position_order
+  );
 
   // Pre-calcular valores dinámicos
   for (const param of sortedParameters) {
@@ -222,7 +229,13 @@ const buildRoutePathWithParameters = (routeParameters, values) => {
 
     if (param.is_required && !paramValue) {
       throw new Error(
-        `El parámetro requerido '${param.name}' (${param.parameter_key}) no tiene valor ${values.fileIndex !== undefined ? `para el archivo con índice ${values.fileIndex}` : ''}`
+        `El parámetro requerido '${param.name}' (${
+          param.parameter_key
+        }) no tiene valor ${
+          values.fileIndex !== undefined
+            ? `para el archivo con índice ${values.fileIndex}`
+            : ""
+        }`
       );
     }
 
@@ -233,12 +246,12 @@ const buildRoutePathWithParameters = (routeParameters, values) => {
     routeParameterValues.push({
       route_parameter_id: parseInt(param.route_parameter_id),
       position_order: param.position_order,
-      value: paramValue || ''
+      value: paramValue || "",
     });
   }
 
   return {
     routePath: routeParts.join(separator),
-    routeParameterValues
+    routeParameterValues,
   };
 };

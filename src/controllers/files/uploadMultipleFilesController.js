@@ -67,6 +67,17 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
             };
         });
 
+        // ========================================================================
+        // VALIDACIÓN DE ARCHIVOS DUPLICADOS (ACTUALMENTE DESHABILITADA)
+        // ========================================================================
+        // Esta sección verifica si los archivos ya existen en la base de datos
+        // comparando MD5 hash + routeRuleId para evitar duplicados.
+        // 
+        // ESTADO ACTUAL: Comentado - todos los archivos se subirán sin validación
+        // USO FUTURO: Descomentar cuando se requiera detección de duplicados
+        // ========================================================================
+
+        /*
         const routeRuleIds = [...new Set(preparedFiles.map(f => f.config.routeRuleId))];
         const md5Hashes = preparedFiles.map(f => f.md5);
 
@@ -110,6 +121,14 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                 newFiles.push(file);
             }
         });
+        */
+
+        // ========================================================================
+        // MODO ACTUAL: Todos los archivos se procesan como nuevos
+        // ========================================================================
+        const newFiles = preparedFiles;
+        const duplicateFiles = [];
+        // ========================================================================
 
         const uploadedFiles = [];
 
@@ -375,6 +394,17 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
             };
         });
 
+        // ========================================================================
+        // VALIDACIÓN DE ARCHIVOS DUPLICADOS (ACTUALMENTE DESHABILITADA)
+        // ========================================================================
+        // Esta sección verifica si los archivos ya existen en la base de datos
+        // comparando MD5 hash + routeRuleId para evitar duplicados en batch.
+        // 
+        // ESTADO ACTUAL: Comentado - todos los archivos se subirán sin validación
+        // USO FUTURO: Descomentar cuando se requiera detección de duplicados
+        // ========================================================================
+
+        /*
         const routeRuleIds = [...new Set(preparedFiles.map(f => f.config.routeRuleId))];
         const md5Hashes = preparedFiles.map(f => f.md5);
 
@@ -416,6 +446,14 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                 newFiles.push(file);
             }
         }
+        */
+
+        // ========================================================================
+        // MODO ACTUAL: Todos los archivos se procesan como nuevos
+        // ========================================================================
+        const newFiles = preparedFiles;
+        const duplicateFiles = [];
+        // ========================================================================
 
         const uploadedFiles = [];
 

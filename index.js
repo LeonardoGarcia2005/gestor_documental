@@ -15,7 +15,7 @@ loggerGlobal.debug(`Tengo el puerto web: ${PUERTO_WEB}`)
 // Configuración de CORS para evitar problemas
 const corsOptions = {
   origin: [
-    'http://localhost:5173', 
+    'http://localhost:5173',
     'https://pangeatech.com.uy:8888', 
     'https://www.pangeatech.com.uy:8888', 
     'https://agendateya.com.uy', 
@@ -64,7 +64,7 @@ app.use((req, res, next) => {
 });
 
 // Saludo del gestor documental
-app.get("/gestor_dev/", (req, res) => {
+app.get("/gestor/", (req, res) => {
   // Detectar el entorno (puedes ajustar esta lógica según tu configuración)
   const environment = process.env.NODE_ENV || 'development';
   const isProduction = environment === 'production';
@@ -316,10 +316,10 @@ app.get("/gestor_dev/", (req, res) => {
   `);
 });
 
-const API_PREFIX = "/gestor_dev/api"
+const PREFIX = process.env.API_PREFIX
 
-app.use(`${API_PREFIX}`, filesRouter)
-app.use(`${API_PREFIX}`, companyRouter)
+app.use(`${PREFIX}`, filesRouter)
+app.use(`${PREFIX}`, companyRouter)
 
 // Iniciar el servidor Express
 try {

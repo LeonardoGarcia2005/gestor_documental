@@ -1,7 +1,7 @@
 // Construye la URL completa para acceder a un archivo
 export const buildFileUrl = (filePath) => {
   // Tomar el dominio configurado en el .env
-  // (ej: https://www.pangeatech.com.uy:8888/gestor-archivos)
+  // (ej: https://www.pangeatech.com.uy:9444/gestor-archivos)
   const baseUrl = process.env.URL_GLOBAL?.replace(/\/$/, '') 
     || config.urlGlobal?.replace(/\/$/, '');
 

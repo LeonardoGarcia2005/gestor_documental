@@ -34,7 +34,7 @@ const createCompanyAndToken = async (req, res) => {
     const token = await createAccessToken(companyCode);
 
     // Llamar al servicio para crear la empresa
-    await companyDAO.createCompany(companyCode, name, token);
+    await companyDAO.createCompany(companyCode, nameFormatted, token);
 
     // Enviar la respuesta con el token
     return res.status(200).json({ token, token_type: "bearer", companyCode });
