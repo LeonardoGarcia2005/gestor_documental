@@ -87,7 +87,7 @@ router.get(
   "/files/private/search",
   validateSchema(searchFilesSchema, 'query'),
   authenticateContext,
-  validateFilesCompany,
+  validateFilesCompany({ requiredSecurityLevel: 'private' }),
   getPrivateFiles
 );
 

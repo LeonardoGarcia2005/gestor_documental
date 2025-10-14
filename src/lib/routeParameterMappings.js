@@ -20,6 +20,9 @@ const PARAMETER_MAPPINGS = {
     
     // Parámetros de archivo
     '{base_path}': (context) => context.basePath || null,
+
+    // Parametros para el tipo de archivo
+    '{file_type}': (context) => context.typeOfFile || null,
   };
   
   export const getParameterValue = (parameterKey, securityContext) => {

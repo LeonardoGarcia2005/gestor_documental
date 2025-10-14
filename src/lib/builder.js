@@ -35,3 +35,17 @@ export const buildFileUrl = (filePath) => {
   return `${baseUrl}/${relativePath}`;
 };
 
+// Construye el nombre del archivo con token
+export const buildFileNameWithToken = (fileName, token) => {
+  const lastDotIndex = fileName.lastIndexOf('.');
+  
+  if (lastDotIndex === -1) {
+    // Archivo sin extensión
+    return `${token}&${fileName}`;
+  }
+  
+  const nameWithoutExtension = fileName.substring(0, lastDotIndex);
+  const extension = fileName.substring(lastDotIndex + 1);
+  
+  return `${token}&${nameWithoutExtension}.${extension}`;
+};

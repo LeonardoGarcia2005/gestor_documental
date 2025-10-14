@@ -1,4 +1,5 @@
 import path from "path";
+import os from "os";
 
 export const normalizeFolderName = (name) => {
   if (!name || typeof name !== "string") {
@@ -62,3 +63,14 @@ export const formatDate = (date) => {
   if (!date) return null;
   return new Date(date).toISOString().split("T")[0]; 
 };
+
+// Corrige rutas /mnt/... cuando se ejecuta en Windows
+const fixWindowsPath = (p) => {
+  if (os.platform() === "win32" && p.startsWith("/mnt/")) {
+    // Ejemplo: /mnt/gestor_documental_dev -> C:/mnt/gestor_documental_dev
+    return "C:" + p;
+  }
+  return p;
+};
+
+export const normalizePath = (p) => fixWindowsPath(p.replace(/\\/g, "/"));

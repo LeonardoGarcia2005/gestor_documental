@@ -50,7 +50,7 @@ const getRouteRuleComplete = async (finalValues, httpMethod) => {
 };
 
 // Función simplificada - solo security y company
-const getRouteRuleBasic = async (securityLevel, hasCompany) => {
+const getRouteRuleBasePublicCompany = async (securityLevel) => {
   try {
     const queryParameters = `
       SELECT
@@ -65,17 +65,16 @@ const getRouteRuleBasic = async (securityLevel, hasCompany) => {
       FROM route_rule_parameter rrp
       JOIN route_parameter rp ON rrp.route_parameter_id = rp.id
       JOIN route_rule rr ON rrp.route_rule_id = rr.id
-      WHERE rr.security_level_type = $1 
+      WHERE rr.security_level_type = 'public' 
         AND rr.company_required = true
         AND rr.is_for_multi_file = false
-        AND rr.status = TRUE
+        AND rr.http_method = 'POST'
         AND rrp.status = TRUE
         AND rp.status = TRUE
       ORDER BY rrp.position_order
     `;
 
-    const values = [securityLevel, hasCompany];
-    const routeParameters = await dbConnectionProvider.getAll(queryParameters, values);
+    const routeParameters = await dbConnectionProvider.getAll(queryParameters);
 
     if (!routeParameters || routeParameters.length === 0) {
       throw new Error(
@@ -92,7 +91,7 @@ const getRouteRuleBasic = async (securityLevel, hasCompany) => {
 
 const routeRuleDAO = {
   getRouteRuleComplete,
-  getRouteRuleBasic
+  getRouteRuleBasePublicCompany
 };
 
 export { routeRuleDAO };

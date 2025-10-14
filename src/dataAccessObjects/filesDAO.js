@@ -49,8 +49,10 @@ const getFilesByCodes = async (codes) => {
         f.code,
         f.file_name,
         f.route_rule_id,
-        f.company_id
+        f.company_id,
+        sl.type AS "securityLevel"
       FROM file AS f
+      JOIN security_level sl ON f.security_level_id = sl.id
       WHERE f.code IN (${placeholders})
     `;
 
