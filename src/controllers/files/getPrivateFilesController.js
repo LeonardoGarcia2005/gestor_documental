@@ -4,7 +4,7 @@ import { loggerGlobal } from "../../logging/loggerManager.js";
 import { routeRuleDAO } from "../../dataAccessObjects/routeRuleDAO.js";
 import { buildRoutePathWithParameters } from "../../middlewares/applyRouteRuleMiddleware.js";
 import { createTokenForFile } from "../../lib/jwt.js";
-import { buildFileNameWithToken } from "../../lib/builder.js";
+import { saveToken } from "../../services/tokenManager.js";
 import { copyFileToPublicDestination, findExistingTempFile } from "../../services/fileSystem.js";
 import { buildFileUrl } from "../../lib/builder.js";
 
@@ -82,16 +82,15 @@ export const getPrivateFiles = async (req, res) => {
               process.env.FILE_JWT_EXPIRES_IN || '3d'
             );
 
-            const nameFileWithToken = buildFileNameWithToken(
-              fileData.file_name,
-              tokenFile
-            );
+            
+            const shortId = await saveToken(fileData.code, tokenFile);
+            const nameFileWithShortId = `${shortId}&${fileData.file_name}`;
 
             // Copiar archivo a destino temporal
             tempFileUrl = await copyFileToPublicDestination(
               privateFilePath,
               routePath,
-              nameFileWithToken
+              nameFileWithShortId
             );
           }
 

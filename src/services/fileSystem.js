@@ -2,8 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { loggerGlobal } from "../logging/loggerManager.js";
-import { verifyAccessToken } from "../lib/jwt.js";
 import { normalizePath } from "../lib/formatters.js";
+import { TOKEN_FILE_PATH } from "./tokenManager.js";
 
 const isUnixSystem = ["linux", "darwin"].includes(os.platform());
 
@@ -126,25 +126,30 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
 // Verifica si existe un archivo temporal para un código específico
 export const findExistingTempFile = async (tempDirectory, fileCode) => {
   try {
+    // Verifica que el directorio exista
     await fs.access(tempDirectory);
+
+    // Leer tokens guardados
+    const data = await fs.readFile(TOKEN_FILE_PATH, "utf8");
+    const lines = data.trim().split("\n");
+
+    // Buscar línea con el fileCode
+    const line = lines.find((line) => line.split("|")[1] === fileCode);
+    if (!line) {
+      loggerGlobal.debug(`No se encontró token previo para ${fileCode}`);
+      return null;
+    }
+
+    const [shortId] = line.split("|");
+
+    // Buscar si existe un archivo que empiece con ese shortId
     const files = await fs.readdir(tempDirectory);
+    const foundFile = files.find((f) => f.startsWith(`${shortId}&`));
 
-    for (const fileName of files) {
-      const tokenMatch = fileName.match(/^([^&]+)&/);
-      if (!tokenMatch) continue;
-
-      const token = tokenMatch[1];
-
-      try {
-        const decoded = await verifyAccessToken(token);
-        if (decoded.code === fileCode) {
-          const foundPath = `${normalizePath(tempDirectory)}/${fileName}`;
-          loggerGlobal.info(`Archivo temporal encontrado para código ${fileCode}: ${foundPath}`);
-          return foundPath;
-        }
-      } catch (tokenError) {
-        loggerGlobal.debug(`Token inválido en archivo ${fileName}: ${tokenError.message}`);
-      }
+    if (foundFile) {
+      const foundPath = `${normalizePath(tempDirectory)}/${foundFile}`;
+      loggerGlobal.info(`Archivo temporal reutilizado para código ${fileCode}: ${foundPath}`);
+      return foundPath;
     }
 
     return null;
