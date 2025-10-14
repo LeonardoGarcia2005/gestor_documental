@@ -13,7 +13,7 @@ export const getPublicFiles = async (req, res) => {
     // Convertir string separado por comas a array
     const codeArray = codes.split(',').map(code => code.trim());
 
-    const filesWithMetadata = await Promise.all(
+    const filesProcessed = await Promise.all(
       codeArray.map(async (code) => {
         try {
           // Obtener metadata del archivo
@@ -49,7 +49,7 @@ export const getPublicFiles = async (req, res) => {
     );
 
     // Filtrar los que fallaron (null)
-    const successfulFiles = filesWithMetadata.filter(f => f !== null);
+    const successfulFiles = filesProcessed.filter(f => f !== null);
 
     // Retornar solo el array
     res.status(200).json(successfulFiles);

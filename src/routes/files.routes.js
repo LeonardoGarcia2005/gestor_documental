@@ -17,6 +17,7 @@ import { getPublicFiles } from "../controllers/files/getPublicFilesController.js
 import { updateMultipleFiles } from "../controllers/files/updateMultipleFilesController.js";
 import { updateMultipleFilesSchema } from "../schemas/updateSchemas.js";
 import { authenticateContext } from "../middlewares/authenticateMiddleware.js";
+import { getPrivateFiles } from "../controllers/files/getPrivateFilesController.js";
 
 const router = Router();
 
@@ -63,6 +64,17 @@ router.post(
   uploadMultipleDistinctFiles
 );
 
+// Endpoint para actualizar MÚLTIPLES archivos
+router.put(
+  "/update/multiple",
+  handleMultipleFiles('files'),
+  validateSchema(updateMultipleFilesSchema, "body", false),
+  authenticateContext,
+  attachFileExtensions,
+  validateFilesCompany(),
+  updateMultipleFiles
+);
+
 // Endpoint para obtener los archivos publicos sin hacer el resizing
 router.get(
   "/files/public/search",
@@ -71,15 +83,12 @@ router.get(
   getPublicFiles
 );
 
-// Endpoint para actualizar MÚLTIPLES archivos
-router.put(
-  "/update/multiple",
-  handleMultipleFiles('files'),
-  validateSchema(updateMultipleFilesSchema, "body", false),
+router.get(
+  "/files/private/search",
+  validateSchema(searchFilesSchema, 'query'),
   authenticateContext,
-  attachFileExtensions,
-  validateFilesCompany,
-  updateMultipleFiles
+  validateFilesCompany({ requiredSecurityLevel: 'private' }),
+  getPrivateFiles
 );
 
 // Endpoint para obtener los archivos publicos haciendo el resizing
@@ -88,13 +97,6 @@ router.put(
   validateSchema(searchFilesSchemaResizing),
   validatePublicFiles,
   getPublicFilesResizing
-); */
-
-/* router.post(
-  "/files/private/search",
-  authenticateContext,
-  validateSchema(searchFilesSchema),
-  getPrivateFiles
 ); */
 
 export default router;

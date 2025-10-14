@@ -34,4 +34,3 @@ export const buildFileUrl = (filePath) => {
   // Unir dominio + ruta relativa
   return `${baseUrl}/${relativePath}`;
 };
-

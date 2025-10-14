@@ -16,6 +16,11 @@ export const applyRouteRule = async (req, res, next) => {
       });
     }
 
+    // Validamos que si tiene empresa en true y si es publico le colocamos el valor static
+    if (rawValues.hasCompany && securityContext.securityLevel === "public") {
+      rawValues.storage = "static";
+    }
+
     // Valores base compartidos
     const baseValues = {
       ...rawValues,
@@ -67,11 +72,10 @@ export const applyRouteRule = async (req, res, next) => {
         };
 
         // Obtener regla de ruta específica para este archivo
-        const routeParameters =
-          await routeRuleDAO.getRouteRuleBySecurityAndCompany(
-            fileSpecificValues,
-            httpMethod
-          );
+        const routeParameters = await routeRuleDAO.getRouteRuleComplete(
+          fileSpecificValues,
+          httpMethod
+        );
 
         if (!routeParameters || routeParameters.length === 0) {
           return res.status(500).json({
@@ -108,11 +112,10 @@ export const applyRouteRule = async (req, res, next) => {
     // Archivos múltiples con la MISMA ruta (mismo deviceType)
     else if (isForMultiFile) {
       // Obtener regla de ruta UNA SOLA VEZ (todos comparten la misma)
-      const routeParameters =
-        await routeRuleDAO.getRouteRuleBySecurityAndCompany(
-          baseValues,
-          httpMethod
-        );
+      const routeParameters = await routeRuleDAO.getRouteRuleComplete(
+        baseValues,
+        httpMethod
+      );
 
       if (!routeParameters || routeParameters.length === 0) {
         return res.status(500).json({
@@ -161,11 +164,10 @@ export const applyRouteRule = async (req, res, next) => {
     }
     // Archivo único
     else {
-      const routeParameters =
-        await routeRuleDAO.getRouteRuleBySecurityAndCompany(
-          baseValues,
-          httpMethod
-        );
+      const routeParameters = await routeRuleDAO.getRouteRuleComplete(
+        baseValues,
+        httpMethod
+      );
 
       if (!routeParameters || routeParameters.length === 0) {
         return res.status(500).json({
@@ -197,7 +199,13 @@ export const applyRouteRule = async (req, res, next) => {
   }
 };
 
-const buildRoutePathWithParameters = (routeParameters, values) => {
+export const buildRoutePathWithParameters = (
+  routeParameters,
+  values,
+  options = {}
+) => {
+  const { allowOverrideDefaults = false } = options;
+
   const separator = routeParameters[0].separator_char || "/";
   const routeParts = [];
   const dynamicValues = {};
@@ -207,23 +215,31 @@ const buildRoutePathWithParameters = (routeParameters, values) => {
     (a, b) => a.position_order - b.position_order
   );
 
-  // Pre-calcular valores dinámicos
+  // Pre-calcular TODOS los valores dinámicos (incluso si hay default)
   for (const param of sortedParameters) {
-    if (!param.default_value || param.default_value === "") {
-      dynamicValues[param.parameter_key] = getParameterValue(
-        param.parameter_key,
-        values
-      );
-    }
+    dynamicValues[param.parameter_key] = getParameterValue(
+      param.parameter_key,
+      values
+    );
   }
 
   // Construir partes de la ruta
   for (const param of sortedParameters) {
     let paramValue = null;
 
-    if (param.default_value !== null && param.default_value !== "") {
+    // PRIORIDAD:
+    // 1. Valor explícito pasado en values (si allowOverrideDefaults = true)
+    // 2. Valor por defecto del parámetro
+    // 3. null
+
+    if (allowOverrideDefaults && dynamicValues[param.parameter_key]) {
+      // Usar valor pasado explícitamente (tiene prioridad)
+      paramValue = dynamicValues[param.parameter_key];
+    } else if (param.default_value !== null && param.default_value !== "") {
+      // Usar valor por defecto
       paramValue = param.default_value;
     } else {
+      // Último recurso: valor dinámico calculado
       paramValue = dynamicValues[param.parameter_key];
     }
 

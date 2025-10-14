@@ -2,6 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { loggerGlobal } from "../logging/loggerManager.js";
+import { normalizePath } from "../lib/formatters.js";
+import { TOKEN_FILE_PATH } from "./tokenManager.js";
 
 const isUnixSystem = ["linux", "darwin"].includes(os.platform());
 
@@ -118,6 +120,72 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
       await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
     }
     throw error;
+  }
+};
+
+// Verifica si existe un archivo temporal para un código específico
+export const findExistingTempFile = async (tempDirectory, fileCode) => {
+  try {
+    // Verifica que el directorio exista
+    await fs.access(tempDirectory);
+
+    // Leer tokens guardados
+    const data = await fs.readFile(TOKEN_FILE_PATH, "utf8");
+    const lines = data.trim().split("\n");
+
+    // Buscar línea con el fileCode
+    const line = lines.find((line) => line.split("|")[1] === fileCode);
+    if (!line) {
+      loggerGlobal.debug(`No se encontró token previo para ${fileCode}`);
+      return null;
+    }
+
+    const [shortId] = line.split("|");
+
+    // Buscar si existe un archivo que empiece con ese shortId
+    const files = await fs.readdir(tempDirectory);
+    const foundFile = files.find((f) => f.startsWith(`${shortId}&`));
+
+    if (foundFile) {
+      const foundPath = `${normalizePath(tempDirectory)}/${foundFile}`;
+      loggerGlobal.info(`Archivo temporal reutilizado para código ${fileCode}: ${foundPath}`);
+      return foundPath;
+    }
+
+    return null;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      loggerGlobal.debug(`Directorio temporal no existe: ${tempDirectory}`);
+      return null;
+    }
+    throw error;
+  }
+};
+
+// Copia un archivo privado a un destino público temporal
+export const copyFileToPublicDestination = async (sourcePath, destinationDir, fileName) => {
+  try {
+    await fs.access(sourcePath);
+    await fs.mkdir(destinationDir, { recursive: true });
+
+    const destinationPath = `${normalizePath(destinationDir)}/${fileName}`;
+
+    try {
+      await fs.access(destinationPath);
+      loggerGlobal.info(`Archivo temporal ya existe: ${destinationPath}`);
+      return destinationPath;
+    } catch {
+      // Archivo no existe, continuar
+    }
+
+    await fs.copyFile(sourcePath, destinationPath);
+    loggerGlobal.info(`Archivo copiado exitosamente: ${normalizePath(sourcePath)} -> ${destinationPath}`);
+    return destinationPath;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new Error(`Archivo origen no encontrado: ${normalizePath(sourcePath)}`);
+    }
+    throw new Error(`Error al copiar archivo: ${error.message}`);
   }
 };
 

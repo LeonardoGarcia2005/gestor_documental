@@ -17,11 +17,11 @@ export const createAccessToken = async (companyCode = null, additionalData = {})
 };
 
 // Crear token temporal para archivos
-export const createTokenForFile = async (companyCode) => {
+export const createTokenForFile = async (fileCode) => {
   try {
     const payload = {
       type: "file_access",
-      ...(companyCode && { companyCode })
+      ...(fileCode && { fileCode })
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
