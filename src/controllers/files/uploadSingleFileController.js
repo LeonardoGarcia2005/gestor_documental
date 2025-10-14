@@ -41,12 +41,12 @@ export const uploadSingleFile = async (req, res) => {
     // Crear un valor unico por buffer
     const md5 = calculateMD5(buffer);
 
-    // Validar que el archivo ya no exista
-    const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(md5, routeRuleId);
+    // Determinar el nivel público correctamente
+    const publicSecurityLevel = process.env.SECURITY_PUBLIC_LEVEL?.toLowerCase() || "publico";
+    const isPublicFile = securityLevel?.toLowerCase() === publicSecurityLevel;
 
-    const publicLevel = securityLevels.find((level) =>
-      level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
-    );
+    // Validar que el archivo ya no exista
+/*     const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(md5, routeRuleId);
 
     if (fileExists) {
       const fullRoutePath = `${routePath}/${fileExists.fileName}`;
@@ -55,7 +55,7 @@ export const uploadSingleFile = async (req, res) => {
       return res.status(200).json({
         message: "El archivo ya existe",
         details: {
-          ...(securityLevel === publicLevel
+          ...(isPublicFile
             ? { fileUrl: fileUrl }
             : { fileName: fileExists.fileName }),
           codeFile: fileExists.codeFile,
@@ -65,7 +65,7 @@ export const uploadSingleFile = async (req, res) => {
           securityLevel: fileExists.securityLevel,
         },
       });
-    }
+    } */
 
     const codeFile = generateCodeFile();
     const ext = path.extname(cleanName);
@@ -114,11 +114,12 @@ export const uploadSingleFile = async (req, res) => {
         t
       );
 
+      // Construir la respuesta DENTRO de la transacción
       responseData = {
         success: true,
         message: "Archivo subido exitosamente",
         details: {
-          ...(securityLevel === publicLevel
+          ...(isPublicFile
             ? { fileUrl }
             : { fileName: fileNameWithCode }),
           codeFile: fileInserted.code,
@@ -132,14 +133,18 @@ export const uploadSingleFile = async (req, res) => {
       transactionCommitted = true;
     });
 
+    // Verificar que responseData no sea null antes de enviar
+    if (!responseData) {
+      throw new Error("No se pudo construir la respuesta del archivo");
+    }
+
     return res.status(201).json(responseData);
 
   } catch (error) {
     loggerGlobal.error("Error en uploadSingleFile:", error);
 
-    // Si la transacción se commiteó pero hubo error después, 
-    // eliminar el archivo físico (rollback)
-    if (fullStoragePath && transactionCommitted) {
+    // Si la transacción NO se commiteó y el archivo físico existe, eliminarlo
+    if (fullStoragePath && !transactionCommitted) {
       try {
         await fs.unlink(fullStoragePath);
         loggerGlobal.info(`Archivo físico eliminado tras error en transacción: ${fullStoragePath}`);

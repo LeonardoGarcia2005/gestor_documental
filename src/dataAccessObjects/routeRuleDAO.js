@@ -21,14 +21,13 @@ const getRouteRuleBySecurityAndCompany = async (finalValues, httpMethod) => {
         AND rr.company_required = $2
         AND rr.is_for_multi_file = $3
         AND rr.http_method = $4
-        AND rr.type_of_file = $5
         AND rr.status = TRUE
         AND rrp.status = TRUE
         AND rp.status = TRUE
       ORDER BY rrp.position_order
     `;
 
-    const values = [finalValues.securityLevel, finalValues.hasCompany, finalValues.isForMultiFile, httpMethod, finalValues.typeOfFile];
+    const values = [finalValues.securityLevel, finalValues.hasCompany, finalValues.isForMultiFile, httpMethod];
     const routeParameters = await dbConnectionProvider.getAll(queryParameters, values);
 
     if (!routeParameters || routeParameters.length === 0) {
