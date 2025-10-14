@@ -5,7 +5,7 @@ export const authenticateContext = async (req, res, next) => {
   try {
     let { hasCompany } = req.body;
     // Si hasCompany no está definido colocar por defecto true
-    if (!hasCompany) {
+    if (hasCompany === undefined || hasCompany === null || hasCompany === "") {
       hasCompany = true;
     }
     const authHeader = req.headers.authorization;
@@ -15,7 +15,7 @@ export const authenticateContext = async (req, res, next) => {
       req.securityContext = {
         companyId: null,
         companyCode: null,
-        hasCompany: false
+        hasCompany: false,
       };
       return next();
     }
@@ -24,8 +24,9 @@ export const authenticateContext = async (req, res, next) => {
     if (hasCompany === true) {
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return res.status(401).json({
-          error: 'Token de autenticación requerido',
-          details: 'Debe proporcionar un token Bearer cuando hasCompany es true'
+          error: "Token de autenticación requerido",
+          details:
+            "Debe proporcionar un token Bearer cuando hasCompany es true",
         });
       }
 
@@ -50,7 +51,8 @@ export const authenticateContext = async (req, res, next) => {
       // Validar que el token contenga empresa
       if (!companyCode) {
         return res.status(403).json({
-          message: "Token incompatible: se requiere empresa pero el token no la contiene."
+          message:
+            "Token incompatible: se requiere empresa pero el token no la contiene.",
         });
       }
 
@@ -58,7 +60,7 @@ export const authenticateContext = async (req, res, next) => {
       const company = await companyDAO.getCompanyByCode(companyCode);
       if (!company) {
         return res.status(404).json({
-          message: "Token inválido: la empresa no existe."
+          message: "Token inválido: la empresa no existe.",
         });
       }
 
@@ -66,7 +68,7 @@ export const authenticateContext = async (req, res, next) => {
       req.securityContext = {
         companyId: company.id,
         companyCode: company.company_code,
-        hasCompany: true
+        hasCompany: true,
       };
 
       return next();
@@ -74,15 +76,14 @@ export const authenticateContext = async (req, res, next) => {
 
     // Si hasCompany no está definido o es inválido
     return res.status(400).json({
-      error: 'Parámetro hasCompany requerido',
-      details: 'Debe especificar hasCompany como true o false'
+      error: "Parámetro hasCompany requerido",
+      details: "Debe especificar hasCompany como true o false",
     });
-
   } catch (error) {
-    console.error('Error en authenticateContext:', error);
+    console.error("Error en authenticateContext:", error);
     return res.status(500).json({
-      error: 'Error interno en autenticación',
-      details: error.message
+      error: "Error interno en autenticación",
+      details: error.message,
     });
   }
 };
