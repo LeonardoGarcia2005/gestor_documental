@@ -1,11 +1,23 @@
 import { filesDAO } from "../dataAccessObjects/filesDAO.js";
 
-export const validateFilesCompany = async (req, res, next) => {
+// Middleware para validar que los archivos pertenezcan a la empresa correcta y tengan el nivel de seguridad esperado
+export const validateFilesCompany = (options = {}) => {
+  const { requiredSecurityLevel } = options;
+
+  return async (req, res, next) => {
     try {
-      const { hasCompany, codes } = req.body;
+      let { hasCompany, codes } = req.body;
       const { securityContext } = req;
 
-      // Parsear oldCode (puede venir como string separado por comas)
+      if (!codes) {
+        codes = req.query.codes;
+      }
+
+      if (!hasCompany) {
+        hasCompany = securityContext.hasCompany;
+      }
+
+      // Parsear codes (puede venir como string separado por comas)
       let fileCodes = [];
       if (typeof codes === 'string') {
         fileCodes = codes.split(',').map(code => code.trim());
@@ -20,7 +32,7 @@ export const validateFilesCompany = async (req, res, next) => {
 
       if (fileCodes.length === 0) {
         return res.status(400).json({
-          error: 'No se proporcionaron archivos para actualizar'
+          error: 'No se proporcionaron códigos de archivos'
         });
       }
 
@@ -40,19 +52,62 @@ export const validateFilesCompany = async (req, res, next) => {
         });
       }
 
-      // hasCompany = true
+      // ========== VALIDACIÓN DE NIVEL DE SEGURIDAD ==========
+      if (requiredSecurityLevel) {
+        const invalidSecurityFiles = files.filter(file => {
+          const fileSecurityLevel = file.securityLevel?.toLowerCase();
+          return fileSecurityLevel !== requiredSecurityLevel.toLowerCase();
+        });
+
+        if (invalidSecurityFiles.length > 0) {
+          return res.status(403).json({
+            error: `Solo se permiten archivos ${requiredSecurityLevel}`,
+            details: `${invalidSecurityFiles.length} archivo(s) tienen un nivel de seguridad diferente`,
+            invalidFiles: invalidSecurityFiles.map(f => ({
+              code: f.code,
+              securityLevel: f.securityLevel
+            }))
+          });
+        }
+      }
+
+      // ========== VALIDACIÓN DE EMPRESA ==========
+      // hasCompany = true: Los archivos DEBEN pertenecer a la empresa del token
       if (hasCompany === true) {
         const { companyId } = securityContext;
 
-        // Verificar que todos los archivos pertenezcan a la misma empresa del token
-        const differentCompanyFiles = files.filter(file => 
+        if (!companyId) {
+          return res.status(401).json({
+            error: 'No se encontró empresa en el contexto de seguridad'
+          });
+        }
+
+        // Verificar que todos los archivos pertenezcan a la empresa del token
+        const differentCompanyFiles = files.filter(file =>
           file.company_id !== companyId
         );
 
         if (differentCompanyFiles.length > 0) {
           return res.status(403).json({
-            error: 'Los archivos pertenecen a diferentes empresas',
-            details: 'Todos los archivos deben pertenecer a su empresa'
+            error: 'Archivos no autorizados',
+            details: 'Todos los archivos deben pertenecer a su empresa',
+            unauthorizedFiles: differentCompanyFiles.map(f => ({
+              code: f.code,
+              companyId: f.company_id
+            }))
+          });
+        }
+
+        // Validar que los archivos tengan empresa asignada
+        const filesWithoutCompany = files.filter(file =>
+          file.company_id === null || file.company_id === undefined
+        );
+
+        if (filesWithoutCompany.length > 0) {
+          return res.status(403).json({
+            error: 'Archivos sin empresa',
+            details: 'Todos los archivos deben tener una empresa asignada',
+            filesWithoutCompany: filesWithoutCompany.map(f => f.code)
           });
         }
 
@@ -61,28 +116,33 @@ export const validateFilesCompany = async (req, res, next) => {
         return next();
       }
 
-      // hasCompany = false
+      // hasCompany = false: Los archivos NO deben tener empresa
       if (hasCompany === false) {
         // Verificar que NINGÚN archivo tenga empresa asociada
-        const filesWithCompany = files.filter(file => 
+        const filesWithCompany = files.filter(file =>
           file.company_id !== null && file.company_id !== undefined
         );
 
         if (filesWithCompany.length > 0) {
           return res.status(403).json({
-            error: 'No se permite actualizar archivos de empresa',
-            details: `${filesWithCompany.length} archivo(s) pertenecen a empresas entonces debes enviar la regla de seguridad correspondiente`
+            error: 'No se permiten archivos de empresa',
+            details: `${filesWithCompany.length} archivo(s) pertenecen a empresas`,
+            filesWithCompany: filesWithCompany.map(f => ({
+              code: f.code,
+              companyId: f.company_id
+            }))
           });
         }
 
-        // Todos los archivos son públicos (sin empresa)
+        // Todos los archivos son sin empresa
         req.validatedFiles = files;
         return next();
       }
 
       // hasCompany inválido
       return res.status(400).json({
-        error: 'Parámetro hasCompany inválido'
+        error: 'Parámetro hasCompany inválido',
+        details: 'Debe ser true o false'
       });
 
     } catch (error) {
@@ -92,4 +152,5 @@ export const validateFilesCompany = async (req, res, next) => {
         details: error.message
       });
     }
+  };
 };

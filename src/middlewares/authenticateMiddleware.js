@@ -3,7 +3,11 @@ import { companyDAO } from "../dataAccessObjects/companyDAO.js";
 
 export const authenticateContext = async (req, res, next) => {
   try {
-    const { hasCompany } = req.body;
+    let { hasCompany } = req.body;
+    // Si hasCompany no está definido colocar por defecto true
+    if (!hasCompany) {
+      hasCompany = true;
+    }
     const authHeader = req.headers.authorization;
 
     // Si hasCompany es false, no validar token

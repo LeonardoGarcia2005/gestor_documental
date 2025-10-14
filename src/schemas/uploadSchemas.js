@@ -73,21 +73,39 @@ const baseFileSchema = {
     }),
 };
 
+// Validación personalizada para archivos privados
+const validatePrivateFileSecurity = (value, helpers) => {
+  const { securityLevel, hasCompany } = helpers.state.ancestors[0];
+  
+  if (securityLevel === "privado" && hasCompany !== true) {
+    return helpers.error("any.invalid", {
+      message: "Los archivos privados deben tener hasCompany en true (deben estar asociados a una empresa)"
+    });
+  }
+  
+  return value;
+};
+
 // Esquema para archivo único
 export const createSingleFileSchema = Joi.object({
   ...baseFileSchema,
   typeOfFile: Joi.string()
     .valid(...fileTypes)
     .required(),
-  file: Joi.any().custom(secureFileValidator).required().messages({
-    "file.required": "El archivo es requerido",
-    "file.invalidSignature":
-      "El archivo no coincide con su tipo declarado (posible spoofing)",
-    "file.suspiciousContent":
-      "El archivo contiene contenido potencialmente malicioso",
-    "file.unknownType": "El tipo de archivo no pudo ser determinado",
-    "file.unsupportedType": "El tipo de archivo no está permitido",
-  }),
+  file: Joi.any()
+    .custom(secureFileValidator)
+    .custom(validatePrivateFileSecurity)
+    .required()
+    .messages({
+      "file.required": "El archivo es requerido",
+      "file.invalidSignature":
+        "El archivo no coincide con su tipo declarado (posible spoofing)",
+      "file.suspiciousContent":
+        "El archivo contiene contenido potencialmente malicioso",
+      "file.unknownType": "El tipo de archivo no pudo ser determinado",
+      "file.unsupportedType": "El tipo de archivo no está permitido",
+      "any.invalid": "Los archivos privados deben tener hasCompany en true (deben estar asociados a una empresa)",
+    }),
 });
 
 // Esquema para múltiples archivos
@@ -99,9 +117,17 @@ export const createMultipleFilesSchema = (isDistinct = true) => Joi.object({
   filesData: Joi.array()
     .items(
       isDistinct
-        ? Joi.object({ file: Joi.any().custom(secureFileValidator).required() }).required()
+        ? Joi.object({ 
+            file: Joi.any()
+              .custom(secureFileValidator)
+              .custom(validatePrivateFileSecurity)
+              .required() 
+          }).required()
         : Joi.object({
-            file: Joi.any().custom(secureFileValidator).required(),
+            file: Joi.any()
+              .custom(secureFileValidator)
+              .custom(validatePrivateFileSecurity)
+              .required(),
             deviceType: Joi.string().valid(...deviceTypes).required(),
           }).required()
     )
@@ -114,5 +140,6 @@ export const createMultipleFilesSchema = (isDistinct = true) => Joi.object({
         process.env.MAX_FILES_COUNT || "10"
       } archivos`,
       "any.required": "El array de archivos es requerido",
+      "any.invalid": "Los archivos privados deben tener hasCompany en true (deben estar asociados a una empresa)",
     }),
 });
