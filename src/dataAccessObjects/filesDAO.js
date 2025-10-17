@@ -140,12 +140,8 @@ const getFilesByMd5AndRouteRuleIds = async (md5Hashes, routeRuleIds) => {
 
 const getUnusedFiles = async () => {
   try {
-    // Calculamos la fecha límite (X días atrás según variable de entorno)
-    const expirationDate = new Date();
-    expirationDate.setDate(expirationDate.getDate() - Number(process.env.FILE_EXPIRATION_DAYS));
-
-    // Formatear solo la fecha (sin hora) para comparación exacta
-    const formattedDate = expirationDate.toISOString().split('T')[0]; // "2025-10-12"
+    // Calculamos la fecha límite: 10 minutos atrás
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000); // 10 minutos en ms
 
     const query = `
       SELECT 
@@ -156,17 +152,16 @@ const getUnusedFiles = async () => {
       FROM "file" as fi
       JOIN security_level as slv ON fi.security_level_id = slv.id
       WHERE fi.status = TRUE 
-        AND fi.is_used = FALSE 
-        AND DATE(fi.creation_date) < $1
+        AND fi.is_used = FALSE
+        AND fi.is_queued = FALSE
+        AND fi.creation_date > $1
     `;
 
-    const files = await dbConnectionProvider.getAll(query, [formattedDate]);
+    const files = await dbConnectionProvider.getAll(query, [tenMinutesAgo]);
 
     const filesCodigos = files
       .map((file) => file.code)
       .filter(Boolean);
-
-    console.log('Códigos de archivos no usados:', JSON.stringify(filesCodigos));
 
     return files || [];
   } catch (error) {
@@ -177,37 +172,28 @@ const getUnusedFiles = async () => {
   }
 };
 
-const deleteFilesUnused = async (arrayIdsToRemove) => {
+const getFilesExpired = async () => {
   try {
-    await dbConnectionProvider.tx(async (t) => {
-      // Validar que hay IDs para eliminar
-      if (!arrayIdsToRemove.length) {
-        loggerGlobal.info("No hay archivos para eliminar");
-        return;
-      }
+    const query = `
+      SELECT fi.id, fi.code, s.type, fi.creation_date
+        FROM "file" as fi 
+        JOIN security_level as s ON fi.security_level_id = s.id 
+        WHERE
+          (fi.document_expiration_date IS NOT NULL AND fi.document_expiration_date <= CURRENT_DATE) 
+        OR
+          (fi.document_expiration_date IS NULL AND fi.creation_date + INTERVAL '1 year' <= CURRENT_DATE)
+        ORDER BY 
+          COALESCE(fi.document_expiration_date, fi.creation_date + INTERVAL '1 year')
+        LIMIT 10;
+    `;
 
-      // Eliminar metadatos primero (dependencia de file)
-      const deleteMetadataQuery = `
-            DELETE FROM metadata
-            WHERE file_id IN (${arrayIdsToRemove.join(", ")});
-          `;
-      await t.none(deleteMetadataQuery);
+    const files = await dbConnectionProvider.getAll(query);
 
-      // Eliminar registros de archivos
-      const deleteFilesQuery = `
-            DELETE FROM file
-            WHERE id IN (${arrayIdsToRemove.join(", ")});
-          `;
-      await t.none(deleteFilesQuery);
-    });
-
-    loggerGlobal.info(
-      "Archivos eliminados correctamente."
-    );
+    return files || [];
   } catch (error) {
-    loggerGlobal.error("Error en deleteFilesUnused:", error.message);
+    loggerGlobal.error("Error en getFilesExpired:", error.message);
     throw new Error(
-      "Error al eliminar los archivos y datos relacionados: " + error.message
+      "Error al obtener los archivos sin usar. Por favor, intente de nuevo."
     );
   }
 };
@@ -393,6 +379,55 @@ const updateFile = async ({ fileName, oldCode, fileSize, md5, extensionId }, t) 
   }
 };
 
+const changeStatusFilesAsQueued = async (fileIds, status) => {
+  if (!fileIds.length) return 0;
+
+  const query = `
+    UPDATE file
+    SET is_queued = ${status},
+        modification_date = NOW()
+    WHERE id = ANY($1::bigint[])
+  `;
+
+  await dbConnectionProvider.executeQuery(query, [fileIds]);
+};
+
+const deleteFilesUnused = async (arrayIdsToRemove, t) => {
+  try {
+    if (!arrayIdsToRemove.length) {
+      loggerGlobal.info("No hay archivos para eliminar");
+      return;
+    }
+
+    // Eliminar metadatos primero (dependencia de file)
+    const deleteMetadataQuery = `
+      DELETE FROM metadata
+      WHERE file_id IN (${arrayIdsToRemove.join(", ")});
+    `;
+    await dbConnectionProvider.executeQuery(deleteMetadataQuery, [], t, false);
+
+    // Eliminar los archivos variantes que estan asociados a un archivo
+    const deleteVariantsQuery = `
+      DELETE FROM file_variant
+      WHERE main_file_id IN (${arrayIdsToRemove.join(", ")}) OR variant_file_id IN (${arrayIdsToRemove.join(", ")});
+    `;
+    await dbConnectionProvider.executeQuery(deleteVariantsQuery, [], t, false);
+
+    // Eliminar registros de archivos
+    const deleteFilesQuery = `
+      DELETE FROM file
+      WHERE id IN (${arrayIdsToRemove.join(", ")});
+    `;
+    await dbConnectionProvider.executeQuery(deleteFilesQuery, [], t, false);
+
+    loggerGlobal.info("Archivos eliminados correctamente.");
+  } catch (error) {
+    loggerGlobal.error("Error en deleteFilesUnused:", error.message);
+    throw new Error(
+      "Error al eliminar los archivos y datos relacionados: " + error.message
+    );
+  }
+};
 
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
@@ -405,7 +440,9 @@ const filesDAO = {
   getFilesByCodes,
   updateFile,
   getUnusedFiles,
-  deleteFilesUnused
+  deleteFilesUnused,
+  changeStatusFilesAsQueued,
+  getFilesExpired
 };
 
 export { filesDAO };
