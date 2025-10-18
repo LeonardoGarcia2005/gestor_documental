@@ -1,6 +1,7 @@
 import { CronJob } from "cron";
 import { processUnusedFiles } from "../services/processUnusedFiles.js";
 import { loggerGlobal } from "../logging/loggerManager.js";
+import { backupFiles } from "../services/backupFiles.js";
 
 /* ==========================================================
   Limpieza de archivos sin usar (cada 4 horas)
@@ -29,8 +30,8 @@ const cleanupFilesJob = new CronJob(
 /* ==========================================================
   Crear backup de los archivos expirados (cada 4 dias)
 ========================================================== */
-const backupFilesJob = new CronJob(
-  "0 0 */4 * *",
+/* const backupFilesJob = new CronJob(
+  "0 0 4 * *",
   async () => {
     try {
       const result = await backupFiles();
@@ -48,9 +49,9 @@ const backupFilesJob = new CronJob(
   null,
   true,
   "America/Montevideo"
-);
+); */
 
 export default {
   cleanupFilesJob,
-  backupFilesJob,
+/*   backupFilesJob, */
 };
