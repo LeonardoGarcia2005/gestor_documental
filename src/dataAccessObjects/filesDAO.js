@@ -14,7 +14,7 @@ const getFileByCode = async (codeFile) => {
       FROM file AS f
       JOIN security_level sl ON f.security_level_id = sl.id
       JOIN document_type dt ON f.document_type_id = dt.id
-      WHERE f.code = $1
+      WHERE f.code = $1 AND f.status = TRUE AND is_backup = FALSE
     `;
 
     const values = [codeFile];
@@ -44,7 +44,7 @@ const getFilesByCodes = async (codes) => {
     const placeholders = codes.map((_, index) => `$${index + 1}`).join(',');
 
     const queryFiles = `
-      SELECT 
+      SELECT
         f.id,
         f.code,
         f.file_name,
@@ -53,7 +53,7 @@ const getFilesByCodes = async (codes) => {
         sl.type AS "securityLevel"
       FROM file AS f
       JOIN security_level sl ON f.security_level_id = sl.id
-      WHERE f.code IN (${placeholders})
+      WHERE f.code IN (${placeholders}) AND f.status = TRUE AND is_backup = FALSE
     `;
 
     const result = await dbConnectionProvider.getAll(
@@ -176,20 +176,24 @@ const getFilesExpired = async () => {
   try {
     const query = `
       SELECT fi.id, fi.code, s.type, fi.creation_date
-        FROM "file" as fi 
-        JOIN security_level as s ON fi.security_level_id = s.id 
-        WHERE
-          (fi.document_expiration_date IS NOT NULL AND fi.document_expiration_date <= CURRENT_DATE) 
-        OR
-          (fi.document_expiration_date IS NULL AND fi.creation_date + INTERVAL '1 year' <= CURRENT_DATE)
-        ORDER BY 
-          COALESCE(fi.document_expiration_date, fi.creation_date + INTERVAL '1 year')
-        LIMIT 10;
+      FROM "file" as fi 
+      JOIN security_level as s ON fi.security_level_id = s.id 
+      WHERE
+      (
+      (fi.document_expiration_date IS NOT NULL AND fi.document_expiration_date <= CURRENT_DATE) 
+      OR
+      (fi.document_expiration_date IS NULL AND fi.creation_date + INTERVAL '1 year' <= CURRENT_DATE)
+      )
+      AND fi.is_backup = FALSE
+      AND fi.status = TRUE
+      ORDER BY 
+        COALESCE(fi.document_expiration_date, fi.creation_date + INTERVAL '1 year') ASC
+      LIMIT 50;
     `;
 
-    const files = await dbConnectionProvider.getAll(query);
+    const filesExpired = await dbConnectionProvider.getAll(query);
 
-    return files || [];
+    return filesExpired || [];
   } catch (error) {
     loggerGlobal.error("Error en getFilesExpired:", error.message);
     throw new Error(
@@ -323,6 +327,34 @@ const changeStatusFile = async (codeFile, isActive) => {
   }
 };
 
+const changeIsBackupFile = async (codeFile, isBackup, tx = null) => {
+  try {
+
+    const values = {
+      route_rule_id: null,
+      is_backup: isBackup,
+      modification_date: new Date(),
+    }
+
+    const result = await dbConnectionProvider.updateOne(
+      "file",
+      values,
+      tx,
+      { code: codeFile }
+    );
+
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al colocar el archivo como un backup", {
+      error: error.message,
+      stack: error.stack,
+      codeFile,
+      isBackup,
+    });
+    throw new Error(`Error al colocar el archivo como un backup: ${error.message}`);
+  }
+};
+
 // Servicio para determinar si algun archivo del arreglo es privado para indicar que no puede traer nada porque el archivo es privado
 const existSomePrivateFile = async (codes, securityLevelType = 'private') => {
   try {
@@ -442,7 +474,8 @@ const filesDAO = {
   getUnusedFiles,
   deleteFilesUnused,
   changeStatusFilesAsQueued,
-  getFilesExpired
+  getFilesExpired,
+  changeIsBackupFile
 };
 
 export { filesDAO };
