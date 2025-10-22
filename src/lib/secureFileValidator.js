@@ -1,6 +1,7 @@
 
 import { fileExtensions } from "../dataAccessObjects/enumDAO.js";
 import { fileTypeFromBuffer } from "file-type";
+import path from "path";
 
 // Mapa extensión ↔ mimetype (basado en tu tabla)
 const EXTENSION_MIME_MAP = {
@@ -16,6 +17,11 @@ const EXTENSION_MIME_MAP = {
   zip: "application/zip",
   mp4: "video/mp4",
   mp3: "audio/mpeg",
+};
+
+export const getMimeType = (filePath) => {
+  const ext = path.extname(filePath).toLowerCase().replace(".", "");
+  return EXTENSION_MIME_MAP[ext] || "application/octet-stream";
 };
 
 // Validador personalizado para archivos con validación de seguridad

@@ -28,30 +28,23 @@ const cleanupFilesJob = new CronJob(
 );
 
 /* ==========================================================
-  Crear backup de los archivos expirados (cada 4 dias)
+  Crear backup de los archivos expirados (cada dia)
 ========================================================== */
-/* const backupFilesJob = new CronJob(
-  "0 0 4 * *",
+const backupFilesJob = new CronJob(
+  "0 0 3 * * *", // A las 3:00:00 AM todos los días
   async () => {
     try {
       const result = await backupFiles();
-      if (result?.batchesQueued > 0) {
-        loggerGlobal.info(
-          `🎉 Cron exitoso: ${result.batchesQueued} lotes encolados para ${result.totalFiles} archivos`
-        );
-      } else {
-        loggerGlobal.info("✅ Cron ejecutado, pero no se encontraron archivos para procesar");
-      }
     } catch (error) {
-      loggerGlobal.error("❌ Error en cron job de limpieza de archivos:", error.message);
+      loggerGlobal.error("❌ Error en el cron job de backup de archivos:", error.message);
     }
   },
   null,
   true,
   "America/Montevideo"
-); */
+);
 
 export default {
   cleanupFilesJob,
-/*   backupFilesJob, */
+  backupFilesJob,
 };

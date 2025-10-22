@@ -49,7 +49,7 @@ const getBackupLog = async (date) => {
       WHERE execution_date = $1;
     `;
     
-    const result = await dbConnectionProvider.db.oneOrNone(query, [date]);
+    const result = await dbConnectionProvider.firstOrDefault(query, [date]);
     return result;
   } catch (err) {
     loggerGlobal.error(`Error al consultar log de backup:`, err.message);

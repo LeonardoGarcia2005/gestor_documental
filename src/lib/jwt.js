@@ -44,6 +44,20 @@ export const verifyAccessToken = async (token) => {
   }
 };
 
+// Verificar el token por archivo la cual depende si se expira o no
+export const verifyTokenForFile = async (token) => {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return decoded;
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      throw new Error("Token expirado");
+    } else {
+      throw new Error("Token inválido");
+    }
+  }
+};
+
 // Función para validar si el token ha expirado
 export const isTokenExpired = async (token) => {
   try {

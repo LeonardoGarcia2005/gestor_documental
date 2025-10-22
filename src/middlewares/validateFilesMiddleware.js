@@ -15,7 +15,7 @@ export const validateFilesCompany = (options = {}) => {
         codes = req.query.codes;
       }
 
-      if (!hasCompany && hasCompany !== false) { // ← Verificar explícitamente false
+      if (!hasCompany && hasCompany !== false) {
         hasCompany = securityContext?.hasCompany;
       }
 

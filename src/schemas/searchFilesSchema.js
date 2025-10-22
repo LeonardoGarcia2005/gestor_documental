@@ -8,7 +8,7 @@ export const searchFilesSchema = Joi.object({
       "any.required": "El parámetro codes es obligatorio",
       "string.empty": "El parámetro codes no puede estar vacío",
       "string.pattern.base": "Los códigos deben tener el formato FILE-XXXXXXXX separados por comas"
-    })
+    }),
 });
 
 export const searchFilesSchemaResizing = Joi.object({

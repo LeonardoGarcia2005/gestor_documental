@@ -6,10 +6,14 @@ import { filesDAO } from '../dataAccessObjects/filesDAO.js';
 import { auditLogDAO } from '../dataAccessObjects/auditLogDAO.js';
 import { fileParameterValueDAO } from '../dataAccessObjects/fileParameterValueDAO.js';
 import { dbConnectionProvider } from '../config/db/dbConnectionManager.js';
+import os from 'os';
+import { normalizePath } from '../lib/formatters.js';
 
 export const backupFiles = async () => {
   const batchId = uuidv4();
   const today = new Date().toISOString().split('T')[0];
+
+  loggerGlobal.info(`🔄 [BACKUP] Iniciando backup en ${os.platform()}`);
 
   // Verificar si ya se ejecutó hoy
   const existingLog = await auditLogDAO.getBackupLog(today);
@@ -34,7 +38,7 @@ export const backupFiles = async () => {
   const filesExpired = await filesDAO.getFilesExpired();
 
   if (!filesExpired.length) {
-    loggerGlobal.info('[CRON] No hay archivos para procesar.\n');
+    loggerGlobal.info('[BACKUP] No hay archivos expirados para respaldar.\n');
 
     const data = {
       execution_date: today,
@@ -47,6 +51,8 @@ export const backupFiles = async () => {
     await auditLogDAO.logBackupExecution(data);
     return { totalFiles: 0, filesBackedUp: 0, errors: 0 };
   }
+
+  loggerGlobal.info(`📋 [BACKUP] ${filesExpired.length} archivos expirados encontrados`);
 
   const results = {
     totalFiles: filesExpired.length,
@@ -112,6 +118,7 @@ export const backupFiles = async () => {
 /**
  * Respalda un archivo individual con transacción atómica
  * SIEMPRE retorna un objeto (nunca rechaza la promesa)
+ * Compatible con Windows y Linux
  */
 const backupSingleFile = async (file) => {
   let originalPath = null;
@@ -119,49 +126,65 @@ const backupSingleFile = async (file) => {
   let backupCreated = false;
 
   try {
-    // 1️⃣ Construir rutas
+    // Construir rutas (path.join maneja separadores automáticamente)
     originalPath = await fileParameterValueDAO.buildFilePathFromCode(file.code);
 
-    const backupBaseDir = file.type === 'private'
+    originalPath = normalizePath(originalPath);
+
+    const backupBaseDir = file.security_level === 'private' || file.type === 'private'
       ? process.env.PATH_BACKUP_PRIVATE
       : process.env.PATH_BACKUP_PUBLIC;
 
-    backupPath = path.join(backupBaseDir, path.basename(originalPath));
+    if (!backupBaseDir) {
+      throw new Error('PATH_BACKUP no configurado en variables de entorno');
+    }
 
-    // 2️⃣ Verificar archivo original existe
-    await fs.access(originalPath, fs.constants.R_OK);
+    // Construir ruta de backup manteniendo estructura
+    const fileName = path.basename(originalPath);
+    backupPath = path.normalize(path.join(backupBaseDir, fileName));
+
+    loggerGlobal.debug(`[${file.code}] Original: ${originalPath}`);
+    loggerGlobal.debug(`[${file.code}] Backup: ${backupPath}`);
+
+    // Verificar archivo original existe
+    try {
+      await fs.access(originalPath, fs.constants.R_OK);
+    } catch (accessError) {
+      throw new Error(`Archivo no accesible: ${accessError.code}`);
+    }
+
     const originalStats = await fs.stat(originalPath);
 
-    // 3️⃣ Crear directorio de backup
+    // Crear directorio de backup (recursive funciona en ambos OS)
     await fs.mkdir(path.dirname(backupPath), { recursive: true });
 
-    // 4️⃣ Copiar archivo al backup
+    // Copiar archivo al backup
     await fs.copyFile(originalPath, backupPath);
     backupCreated = true;
 
-    // 5️⃣ Verificar integridad de la copia
+    // Verificar integridad de la copia
     const backupStats = await fs.stat(backupPath);
     if (originalStats.size !== backupStats.size) {
-      throw new Error('Integridad comprometida: tamaños no coinciden');
+      throw new Error(`Integridad comprometida: original ${originalStats.size} bytes != backup ${backupStats.size} bytes`);
     }
 
-    // 6️⃣ ✅ Actualizar BD (SOLO esto en transacción)
+    // Actualizar BD (SOLO esto en transacción)
     await dbConnectionProvider.tx(async (t) => {
       await filesDAO.changeIsBackupFile(file.code, true, t);
     });
 
-    // 7️⃣ ✅ DESPUÉS de actualizar BD, eliminar archivo original
-    // Si esto falla, no importa: el archivo está respaldado y marcado en BD
+    // DESPUÉS de actualizar BD, eliminar archivo original
     try {
       await fs.unlink(originalPath);
+      loggerGlobal.debug(`🗑️ [${file.code}] Archivo original eliminado`);
     } catch (unlinkError) {
       // Si falla el unlink, registrar pero NO fallar el backup
       loggerGlobal.warn(
-        `⚠️ [${file.id}] Archivo respaldado pero no se pudo eliminar original: ${unlinkError.message}`
+        `⚠️ [${file.code}] Archivo respaldado pero no se pudo eliminar original: ${unlinkError.message}`
       );
     }
 
-    loggerGlobal.debug(`✅ [${file.id}] ${file.code} respaldado exitosamente`);
+    loggerGlobal.info(`✅ [${file.code}] Respaldado exitosamente (${(backupStats.size / 1024).toFixed(2)} KB)`);
 
     return {
       file_id: file.id,
@@ -170,26 +193,26 @@ const backupSingleFile = async (file) => {
       original_path: originalPath,
       backup_path: backupPath,
       size_bytes: backupStats.size,
-      security_level: file.type,
+      security_level: file.security_level || file.type,
       expiration_date: file.document_expiration_date
     };
 
   } catch (error) {
-    // 8️⃣ Si algo falló, limpiar backup
+    // Si algo falló, limpiar backup
     if (backupCreated && backupPath) {
       try {
         await fs.unlink(backupPath);
-        loggerGlobal.debug(`🧹 Limpiando backup fallido: ${backupPath}`);
+        loggerGlobal.debug(`🧹 [${file.code}] Limpiando backup fallido`);
       } catch (cleanupError) {
         // Silencioso en cleanup
       }
     }
 
     const errorMsg = error.code === 'ENOENT'
-      ? 'Archivo no encontrado'
+      ? 'Archivo no encontrado en el sistema'
       : error.message;
     
-    loggerGlobal.debug(`❌ [${file.id}] ${file.code}: ${errorMsg}`);
+    loggerGlobal.error(`❌ [${file.code}] ${errorMsg}`);
 
     return {
       file_id: file.id,
@@ -197,7 +220,8 @@ const backupSingleFile = async (file) => {
       status: 'failed',
       original_path: originalPath,
       backup_path: backupPath,
-      error: error.message
+      error: errorMsg,
+      error_code: error.code
     };
   }
 };

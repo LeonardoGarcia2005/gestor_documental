@@ -17,7 +17,8 @@ import { getPublicFiles } from "../controllers/files/getPublicFilesController.js
 import { updateMultipleFiles } from "../controllers/files/updateMultipleFilesController.js";
 import { updateMultipleFilesSchema } from "../schemas/updateSchemas.js";
 import { authenticateContext } from "../middlewares/authenticateMiddleware.js";
-import { getPrivateFiles } from "../controllers/files/getPrivateFilesController.js";
+import { getPrivateFiles, viewPrivateFile } from "../controllers/files/getPrivateFilesController.js";
+import { getBackupFile } from "../controllers/files/getBackupFileController.js";
 
 const router = Router();
 
@@ -89,6 +90,16 @@ router.get(
   authenticateContext,
   validateFilesCompany({ requiredSecurityLevel: 'private' }),
   getPrivateFiles
+);
+
+router.get(
+  "/files/private/view/:code",
+  viewPrivateFile
+);
+
+router.get(
+  "/files/backup/:fileName",
+  getBackupFile
 );
 
 // Endpoint para obtener los archivos publicos haciendo el resizing

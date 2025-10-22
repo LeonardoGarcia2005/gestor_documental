@@ -461,6 +461,35 @@ const deleteFilesUnused = async (arrayIdsToRemove, t) => {
   }
 };
 
+const getFileByName = async (fileName) => {
+  try {
+    const query = `
+      SELECT 
+        f.id,
+        f.file_name AS "fileName",
+        c.company_code AS "companyCode",
+        sl.type
+      FROM file AS f
+      JOIN security_level AS sl ON f.security_level_id = sl.id
+      LEFT JOIN company AS c ON f.company_id = c.id
+      WHERE f.file_name ILIKE '%${fileName}%' AND f.is_backup = TRUE
+    `;
+
+    const result = await dbConnectionProvider.firstOrDefault(
+      query
+    );
+    return result;
+
+  } catch (error) {
+    loggerGlobal.error("Error al obtener el archivo que esta en el backup", {
+      error: error.message,
+      stack: error.stack,
+      fileName,
+    });
+    throw new Error(`Error al obtener el archivo que esta en el backup: ${error.message}`);
+  }
+}
+
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
   getFilesByMd5AndRouteRuleIds,
@@ -475,7 +504,8 @@ const filesDAO = {
   deleteFilesUnused,
   changeStatusFilesAsQueued,
   getFilesExpired,
-  changeIsBackupFile
+  changeIsBackupFile,
+  getFileByName
 };
 
 export { filesDAO };
