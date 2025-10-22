@@ -21,7 +21,7 @@ export const getPrivateFiles = async (req, res) => {
       const token = await createTokenForFile(code);
 
       // URL firmada (sin crear archivo físico)
-      const signedUrl = `${process.env.BACKEND_URL}/gestor/api/files/private/view/${code}?token=${token}`;
+      const signedUrl = `${process.env.BASE_URL}/gestor/api/files/private/view/${code}?token=${token}`;
 
       return {
         id: fileData.id,

@@ -1,9 +1,10 @@
 import { filesDAO } from '../dataAccessObjects/filesDAO.js';
 import { getPgBoss } from '../config/pgBoss.js';
 import { loggerGlobal } from '../logging/loggerManager.js';
+import { configurationProvider } from '../config/configurationManager.js';
 
-const BATCH_SIZE = parseInt(process.env.FILE_BATCH_SIZE || '20');
-const DELAY_MINUTES = parseInt(process.env.FILE_BATCH_DELAY_MINUTES || '10');
+const BATCH_SIZE = configurationProvider.files.batchSize;
+const DELAY_MINUTES = configurationProvider.files.batchDelayMinutes;
 const QUEUE_NAME = 'file-cleanup-batch';
 
 export const processUnusedFiles = async () => {

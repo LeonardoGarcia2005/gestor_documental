@@ -11,6 +11,7 @@ import { saveMultipleFilesFromBuffer } from "../../services/fileSystem.js";
 import { generateCodeFile } from "../../lib/generators.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
 import { formatDate } from "../../lib/formatters.js";
+import { configurationProvider } from "../../config/configurationManager.js";
 
 export const uploadMultipleVariantsFiles = async (req, res) => {
     let createdFiles = [];
@@ -29,7 +30,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
         }
 
         const publicLevel = securityLevels.find((level) =>
-            level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
+            level.toLowerCase().includes(configurationProvider.uploads.securityPublicLevel)
         );
 
         const defaultEmissionDate = normalizeDate(emissionDate);
@@ -356,7 +357,7 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
         }
 
         const publicLevel = securityLevels.find((level) =>
-            level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
+            level.toLowerCase().includes(configurationProvider.uploads.securityPublicLevel)
         );
 
         const preparedFiles = files.map((fileEntry, index) => {

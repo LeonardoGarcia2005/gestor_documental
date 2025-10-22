@@ -9,6 +9,7 @@ import {
 import BaseJoi from "joi";
 import JoiDate from "@joi/date";
 import { secureFileValidator } from "../lib/secureFileValidator.js";
+import { configurationProvider } from "../config/configurationManager.js";
 
 const Joi = BaseJoi.extend(JoiDate);
 
@@ -132,12 +133,12 @@ export const createMultipleFilesSchema = (isDistinct = true) => Joi.object({
           }).required()
     )
     .min(1)
-    .max(parseInt(process.env.MAX_FILES_COUNT || "20"))
+    .max(configurationProvider.uploads.maxFilesCount)
     .required()
     .messages({
       "array.min": "Debe enviar al menos 1 archivo",
       "array.max": `No puede enviar más de ${
-        process.env.MAX_FILES_COUNT || "10"
+        configurationProvider.uploads.maxFilesCount
       } archivos`,
       "any.required": "El array de archivos es requerido",
       "any.invalid": "Los archivos privados deben tener hasCompany en true (deben estar asociados a una empresa)",

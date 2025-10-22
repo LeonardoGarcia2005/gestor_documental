@@ -1,5 +1,6 @@
 import PgBoss from 'pg-boss';
 import { loggerGlobal } from '../logging/loggerManager.js';
+import { configurationProvider } from './configurationManager.js';
 
 let boss = null;
 
@@ -7,12 +8,12 @@ export const initPgBoss = async () => {
   if (boss) return boss;
 
   boss = new PgBoss({
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    schema: process.env.PGBOSS_SCHEMA || 'pgboss',
+    host: configurationProvider.db.connection.host,
+    port: configurationProvider.db.connection.port,
+    database: configurationProvider.db.connection.database,
+    user: configurationProvider.db.connection.user,
+    password: configurationProvider.db.connection.password, // Viene de .env
+    schema: configurationProvider.pgBoss.schema,
     retryLimit: 3,
     retryDelay: 60,
     retryBackoff: true,

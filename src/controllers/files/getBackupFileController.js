@@ -2,6 +2,7 @@ import { filesDAO } from "../../dataAccessObjects/filesDAO.js";
 import { verifyAccessToken } from "../../lib/jwt.js";
 import path from "path";
 import { loggerGlobal } from "../../logging/loggerManager.js";
+import { configurationProvider } from "../../config/configurationManager.js";
 
 export const getBackupFile = async (req, res) => {
   try {
@@ -31,10 +32,10 @@ export const getBackupFile = async (req, res) => {
 
     const baseDir =
       file.type === "public"
-        ? process.env.PATH_BACKUP_PUBLIC
-        : process.env.PATH_BACKUP_PRIVATE;
+        ? configurationProvider.backup.pathPublic
+        : configurationProvider.backup.pathPrivate;
 
-    const filePath = path.resolve(process.env.BACKEND_URL, baseDir, file.fileName);
+    const filePath = path.resolve(configurationProvider.baseUrl, baseDir, file.fileName);
 
     return res.sendFile(filePath)
   } catch (error) {

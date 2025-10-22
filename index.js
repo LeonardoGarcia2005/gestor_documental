@@ -340,7 +340,7 @@ app.post('/test/run-job', async (req, res) => {
   }
 });
 
-const PREFIX = process.env.API_PREFIX
+const PREFIX = configurationProvider.api.prefix
 
 app.use(`${PREFIX}`, filesRouter)
 app.use(`${PREFIX}`, companyRouter)

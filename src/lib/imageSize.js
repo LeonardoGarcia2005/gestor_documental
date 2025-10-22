@@ -1,4 +1,5 @@
 import sizeOf from "image-size";
+import { loggerGlobal } from "../logging/loggerManager.js";
 
 export const getImageDimensionsWithLibrary = (buffer) => {
   try {
@@ -8,7 +9,7 @@ export const getImageDimensionsWithLibrary = (buffer) => {
       resolution: `${dimensions.width}x${dimensions.height}`,
     };
   } catch (error) {
-    console.error("Error al obtener dimensiones:", error);
+    loggerGlobal.error("Error al obtener dimensiones:", error);
     return null;
   }
 };

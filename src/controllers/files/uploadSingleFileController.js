@@ -13,6 +13,7 @@ import { buildFileUrl } from "../../lib/builder.js";
 import { securityLevels } from "../../dataAccessObjects/enumDAO.js";
 import { fileParameterValueDAO } from "../../dataAccessObjects/fileParameterValueDAO.js";
 import { formatDate } from "../../lib/formatters.js";
+import { configurationProvider } from "../../config/configurationManager.js";
 
 export const uploadSingleFile = async (req, res) => {
   let responseData = null;
@@ -42,7 +43,7 @@ export const uploadSingleFile = async (req, res) => {
     const md5 = calculateMD5(buffer);
 
     // Determinar el nivel público correctamente
-    const publicSecurityLevel = process.env.SECURITY_PUBLIC_LEVEL?.toLowerCase() || "publico";
+    const publicSecurityLevel = configurationProvider.uploads.securityPublicLevel?.toLowerCase() || "public";
     const isPublicFile = securityLevel?.toLowerCase() === publicSecurityLevel;
 
     // Validar que el archivo ya no exista

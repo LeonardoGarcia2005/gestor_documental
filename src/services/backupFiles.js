@@ -6,6 +6,7 @@ import { filesDAO } from '../dataAccessObjects/filesDAO.js';
 import { auditLogDAO } from '../dataAccessObjects/auditLogDAO.js';
 import { fileParameterValueDAO } from '../dataAccessObjects/fileParameterValueDAO.js';
 import { dbConnectionProvider } from '../config/db/dbConnectionManager.js';
+import { configurationProvider } from '../config/configurationManager.js';
 import os from 'os';
 import { normalizePath } from '../lib/formatters.js';
 
@@ -132,11 +133,11 @@ const backupSingleFile = async (file) => {
     originalPath = normalizePath(originalPath);
 
     const backupBaseDir = file.security_level === 'private' || file.type === 'private'
-      ? process.env.PATH_BACKUP_PRIVATE
-      : process.env.PATH_BACKUP_PUBLIC;
+      ? configurationProvider.backup.pathPrivate
+      : configurationProvider.backup.pathPublic;
 
     if (!backupBaseDir) {
-      throw new Error('PATH_BACKUP no configurado en variables de entorno');
+      throw new Error('PATH_BACKUP no configurado en la configuración');
     }
 
     // Construir ruta de backup manteniendo estructura

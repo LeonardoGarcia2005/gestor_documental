@@ -11,6 +11,7 @@ import {
 } from "../../services/fileSystem.js";
 import calculateMD5 from "../../lib/calculateMD5.js";
 import { buildFileUrl } from "../../lib/builder.js";
+import { configurationProvider } from "../../config/configurationManager.js";
 
 export const updateMultipleFiles = async (req, res) => {
   const fileToUpdate = req.fileToUpdate;
@@ -31,7 +32,7 @@ export const updateMultipleFiles = async (req, res) => {
 
   // Determinar si es nivel público
   const publicSecurityLevel =
-    process.env.SECURITY_PUBLIC_LEVEL?.toLowerCase() || "publico";
+    configurationProvider.uploads.securityPublicLevel?.toLowerCase() || "public";
   const isPublicFile = securityLevel?.toLowerCase() === publicSecurityLevel;
 
   // Guardamos copias de seguridad de los archivos originales

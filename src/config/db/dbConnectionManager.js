@@ -1,15 +1,17 @@
 import 'dotenv/config';  // Esto carga las variables de entorno de .env
 import pgPromise from 'pg-promise';
+import { configurationProvider } from '../configurationManager.js';
 //import iconv from 'iconv-lite';
 //import jschardet from 'jschardet';
 
 // Configuración de la conexión a la base de datos
+// Usa configuración híbrida: JSON (development/production) + .env (secretos)
 const connection = {
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
+    host: configurationProvider.db.connection.host,
+    port: configurationProvider.db.connection.port,
+    database: configurationProvider.db.connection.database,
+    user: configurationProvider.db.connection.user,
+    password: configurationProvider.db.connection.password, // Viene de .env
     options: '-c client_encoding=UTF8'
 };
 
