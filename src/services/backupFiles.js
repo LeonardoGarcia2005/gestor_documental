@@ -144,9 +144,6 @@ const backupSingleFile = async (file) => {
     const fileName = path.basename(originalPath);
     backupPath = path.normalize(path.join(backupBaseDir, fileName));
 
-    loggerGlobal.debug(`[${file.code}] Original: ${originalPath}`);
-    loggerGlobal.debug(`[${file.code}] Backup: ${backupPath}`);
-
     // Verificar archivo original existe
     try {
       await fs.access(originalPath, fs.constants.R_OK);
@@ -177,7 +174,6 @@ const backupSingleFile = async (file) => {
     // DESPUÉS de actualizar BD, eliminar archivo original
     try {
       await fs.unlink(originalPath);
-      loggerGlobal.debug(`🗑️ [${file.code}] Archivo original eliminado`);
     } catch (unlinkError) {
       // Si falla el unlink, registrar pero NO fallar el backup
       loggerGlobal.warn(
@@ -203,7 +199,6 @@ const backupSingleFile = async (file) => {
     if (backupCreated && backupPath) {
       try {
         await fs.unlink(backupPath);
-        loggerGlobal.debug(`🧹 [${file.code}] Limpiando backup fallido`);
       } catch (cleanupError) {
         // Silencioso en cleanup
       }

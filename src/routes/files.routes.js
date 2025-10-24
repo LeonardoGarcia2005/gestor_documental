@@ -10,7 +10,7 @@ import { uploadMultipleVariantsFiles, uploadMultipleDistinctFiles } from "../con
 import { createSingleFileSchema, createMultipleFilesSchema } from "../schemas/uploadSchemas.js";
 import { changeStatusFileSchema } from "../schemas/changeStatusFileShema.js";
 import { changeStatusFile } from "../controllers/files/changeStatusFileController.js";
-import { searchFilesSchema } from "../schemas/searchFilesSchema.js"
+import { searchFilesSchema, searchFilesSchemaResizing } from "../schemas/searchFilesSchema.js"
 import { validateFilesCompany } from "../middlewares/validateFilesMiddleware.js";
 import { validatePublicFiles } from "../middlewares/validatePublicFilesMiddleware.js";
 import { getPublicFiles } from "../controllers/files/getPublicFilesController.js";
@@ -98,7 +98,7 @@ router.get(
 );
 
 router.get(
-  "/files/backup/:fileName",
+  "/file/backup/:fileName",
   getBackupFile
 );
 
@@ -108,6 +108,7 @@ router.get(
   validateSchema(searchFilesSchemaResizing),
   validatePublicFiles,
   getPublicFilesResizing
-); */
+);
+ */
 
 export default router;

@@ -47,7 +47,7 @@ export const uploadSingleFile = async (req, res) => {
     const isPublicFile = securityLevel?.toLowerCase() === publicSecurityLevel;
 
     // Validar que el archivo ya no exista
-/*     const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(md5, routeRuleId);
+    const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(md5, routeRuleId);
 
     if (fileExists) {
       const fullRoutePath = `${routePath}/${fileExists.fileName}`;
@@ -66,7 +66,7 @@ export const uploadSingleFile = async (req, res) => {
           securityLevel: fileExists.securityLevel,
         },
       });
-    } */
+    }
 
     const codeFile = generateCodeFile();
     const ext = path.extname(cleanName);

@@ -10,7 +10,9 @@ const getFileByCode = async (codeFile) => {
         f.file_name,
         f.route_rule_id,
         sl.type AS "securityLevel",
-        dt.name AS "documentType"
+        dt.name AS "documentType",
+        f.reference_count AS "referenceCount",
+        f.is_used AS "isUsed"
       FROM file AS f
       JOIN security_level sl ON f.security_level_id = sl.id
       JOIN document_type dt ON f.document_type_id = dt.id
@@ -93,7 +95,7 @@ const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
     const values = [routeRuleId, md5];
 
     // Ejecución de la consulta
-    const resultFile = await dbConnectionProvider.getAll(
+    const resultFile = await dbConnectionProvider.firstOrDefault(
       queryFile,
       values
     );
@@ -305,14 +307,14 @@ const insertFileVariant = async (main_file_id, variant_file_id, resolution, devi
   }
 }
 
-const changeStatusFile = async (codeFile, isActive) => {
+const changeStatusFile = async (fileId, isActive) => {
   try {
 
     const result = await dbConnectionProvider.updateOne(
       "file",
       { is_used: isActive },
       null,
-      { code: codeFile }
+      { id: fileId }
     );
 
     return result;
@@ -320,10 +322,71 @@ const changeStatusFile = async (codeFile, isActive) => {
     loggerGlobal.error("Error al cambiar el estado en el archivo", {
       error: error.message,
       stack: error.stack,
-      codeFile,
+      fileId,
       isActive,
     });
     throw new Error(`Error al cambiar el estado en el archivo: ${error.message}`);
+  }
+};
+
+// Incrementar el contador para saber cuantos los estan usando
+const incrementReferenceCount = async (fileId, referenceCount, tx = null) => {
+  try {
+    await dbConnectionProvider.updateOne(
+      "file",
+      { reference_count: referenceCount },
+      tx,
+      { id: fileId }
+    );
+    return referenceCount;
+  } catch (error) {
+    loggerGlobal.error("Error al incrementar el contador de referencias", {
+      error: error.message,
+      stack: error.stack,
+      fileId,
+    });
+    throw new Error(`Error al incrementar el contador de referencias: ${error.message}`);
+  }
+};
+
+// Decrementar el contador para saber cuantos los estan usando
+const decrementReferenceCount = async (fileId, referenceCount, tx = null) => {
+  try {
+    await dbConnectionProvider.updateOne(
+      "file",
+      { reference_count: referenceCount },
+      tx,
+      { id: fileId }
+    );
+    return referenceCount;
+  } catch (error) {
+    loggerGlobal.error("Error al decrementar el contador de referencias", {
+      error: error.message,
+      stack: error.stack,
+      fileId,
+    });
+    throw new Error(`Error al decrementar el contador de referencias: ${error.message}`);
+  }
+};
+
+// Marcar como compartido
+const markAsShared = async (fileId, isShared, tx = null) => {
+  try {
+    const result = await dbConnectionProvider.updateOne(
+      "file",
+      { is_shared: isShared },
+      tx,
+      { id: fileId }
+    );
+    return result;
+  } catch (error) {
+    loggerGlobal.error("Error al marcar el archivo como compartido", {
+      error: error.message,
+      stack: error.stack,
+      fileId,
+      isShared,
+    });
+    throw new Error(`Error al marcar el archivo como compartido: ${error.message}`);
   }
 };
 
@@ -505,7 +568,10 @@ const filesDAO = {
   changeStatusFilesAsQueued,
   getFilesExpired,
   changeIsBackupFile,
-  getFileByName
+  getFileByName,
+  incrementReferenceCount,
+  decrementReferenceCount,
+  markAsShared
 };
 
 export { filesDAO };
