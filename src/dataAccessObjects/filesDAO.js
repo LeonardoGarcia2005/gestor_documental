@@ -7,12 +7,24 @@ const getFileByCode = async (codeFile) => {
       SELECT 
         f.id,
         f.code,
-        f.file_name,
-        f.route_rule_id,
+        f.file_name AS "fileName",
+        f.route_rule_id AS "routeRuleId",
         sl.type AS "securityLevel",
         dt.name AS "documentType",
         f.reference_count AS "referenceCount",
-        f.is_used AS "isUsed"
+        f.is_used AS "isUsed",
+        f.is_shared AS "isShared",
+        f.company_id AS "companyId",
+        f.document_type_id AS "documentTypeId",
+        f.channel_id AS "channelId",
+        f.security_level_id AS "securityLevelId",
+        f.extension_id AS "extensionId",
+        f.document_emission_date AS "documentEmissionDate",
+        f.document_expiration_date AS "documentExpirationDate",
+        f.has_variants AS "hasVariants",
+        f.size_bytes AS "sizeBytes",
+        f.file_hash_md5 AS "fileHashMd5",
+        f.creation_date AS "creationDate"
       FROM file AS f
       JOIN security_level sl ON f.security_level_id = sl.id
       JOIN document_type dt ON f.document_type_id = dt.id
@@ -219,6 +231,7 @@ const insertFile = async (
   hasVariants,
   sizeBytes,
   fileHashMd5,
+  referenceCount = null,
   t
 ) => {
   try {
@@ -241,6 +254,7 @@ const insertFile = async (
       creation_date: new Date(),
       modification_date: null,
       deactivation_date: null,
+      reference_count: referenceCount == null ? 0 : referenceCount,
       status: true,
     };
 
@@ -264,7 +278,8 @@ const insertFile = async (
     }
 
     // Ejecución de la consulta de inserción
-    const result = await dbConnectionProvider.insertOne("file", values, t);
+    // Asegúrate de que insertOne maneje la transacción correctamente
+    const result = await dbConnectionProvider.insertOne("file", values, t)
 
     return result;
   } catch (error) {
@@ -307,86 +322,55 @@ const insertFileVariant = async (main_file_id, variant_file_id, resolution, devi
   }
 }
 
-const changeStatusFile = async (fileId, isActive) => {
+// Obtener archivo con bloqueo pesimista (evita race conditions)
+const getFileByCodeForUpdate = async (codeFile, tx) => {
   try {
+    const query = `SELECT * FROM file WHERE code = $1 FOR UPDATE`;
+    const result = await dbConnectionProvider.executeQuery(query, [codeFile], tx, true);
 
-    const result = await dbConnectionProvider.updateOne(
-      "file",
-      { is_used: isActive },
-      null,
-      { id: fileId }
-    );
-
-    return result;
+    return result[0] || null;
   } catch (error) {
-    loggerGlobal.error("Error al cambiar el estado en el archivo", {
+    loggerGlobal.error("Error al obtener archivo con lock", {
       error: error.message,
-      stack: error.stack,
-      fileId,
-      isActive,
+      codeFile
     });
-    throw new Error(`Error al cambiar el estado en el archivo: ${error.message}`);
+    throw error;
   }
 };
 
-// Incrementar el contador para saber cuantos los estan usando
-const incrementReferenceCount = async (fileId, referenceCount, tx = null) => {
+const updateFileStatusAtomic = async (fileId, isActive, tx) => {
   try {
-    await dbConnectionProvider.updateOne(
-      "file",
-      { reference_count: referenceCount },
-      tx,
-      { id: fileId }
-    );
-    return referenceCount;
-  } catch (error) {
-    loggerGlobal.error("Error al incrementar el contador de referencias", {
-      error: error.message,
-      stack: error.stack,
-      fileId,
-    });
-    throw new Error(`Error al incrementar el contador de referencias: ${error.message}`);
-  }
-};
+    const query = `
+      UPDATE file 
+      SET 
+        reference_count = CASE 
+          WHEN $2 THEN reference_count + 1
+          ELSE GREATEST(reference_count - 1, 0)
+        END,
+        is_used = CASE 
+          WHEN $2 THEN true
+          WHEN GREATEST(reference_count - 1, 0) = 0 THEN false
+          ELSE is_used
+        END,
+        is_shared = CASE 
+          WHEN $2 AND (reference_count + 1) > 1 THEN true
+          WHEN NOT $2 AND GREATEST(reference_count - 1, 0) <= 1 THEN false
+          ELSE is_shared
+        END,
+        modification_date = NOW()
+      WHERE id = $1
+      RETURNING *
+    `;
 
-// Decrementar el contador para saber cuantos los estan usando
-const decrementReferenceCount = async (fileId, referenceCount, tx = null) => {
-  try {
-    await dbConnectionProvider.updateOne(
-      "file",
-      { reference_count: referenceCount },
-      tx,
-      { id: fileId }
-    );
-    return referenceCount;
+    const result = await dbConnectionProvider.executeQuery(query, [fileId, isActive], tx, true);
+    return result[0];
   } catch (error) {
-    loggerGlobal.error("Error al decrementar el contador de referencias", {
+    loggerGlobal.error("Error al actualizar estado del archivo", {
       error: error.message,
-      stack: error.stack,
       fileId,
+      isActive
     });
-    throw new Error(`Error al decrementar el contador de referencias: ${error.message}`);
-  }
-};
-
-// Marcar como compartido
-const markAsShared = async (fileId, isShared, tx = null) => {
-  try {
-    const result = await dbConnectionProvider.updateOne(
-      "file",
-      { is_shared: isShared },
-      tx,
-      { id: fileId }
-    );
-    return result;
-  } catch (error) {
-    loggerGlobal.error("Error al marcar el archivo como compartido", {
-      error: error.message,
-      stack: error.stack,
-      fileId,
-      isShared,
-    });
-    throw new Error(`Error al marcar el archivo como compartido: ${error.message}`);
+    throw error;
   }
 };
 
@@ -553,11 +537,39 @@ const getFileByName = async (fileName) => {
   }
 }
 
+const copyFileParameters = async (sourceFileId, targetFileId, t) => {
+  try {
+    const query = `
+      INSERT INTO file_parameter_value (
+        file_id, 
+        route_parameter_id, 
+        parameter_value, 
+        creation_date, 
+        status
+      )
+      SELECT 
+        $1 as file_id,
+        route_parameter_id,
+        parameter_value,
+        NOW() as creation_date,
+        status
+      FROM file_parameter_value
+      WHERE file_id = $2 AND status = TRUE
+    `;
+
+    await dbConnectionProvider.executeQuery(query, [targetFileId, sourceFileId], t, false);
+    loggerGlobal.info(`Parámetros copiados de file_id ${sourceFileId} a ${targetFileId}`);
+
+  } catch (error) {
+    loggerGlobal.error(`Error copiando parámetros de archivo:`, error);
+    throw new Error(`No se pudieron copiar los parámetros del archivo: ${error.message}`);
+  }
+}
+
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
   getFilesByMd5AndRouteRuleIds,
   insertFile,
-  changeStatusFile,
   insertFileVariant,
   existSomePrivateFile,
   getFileByCode,
@@ -569,9 +581,9 @@ const filesDAO = {
   getFilesExpired,
   changeIsBackupFile,
   getFileByName,
-  incrementReferenceCount,
-  decrementReferenceCount,
-  markAsShared
+  getFileByCodeForUpdate,
+  updateFileStatusAtomic,
+  copyFileParameters
 };
 
 export { filesDAO };

@@ -11,6 +11,7 @@ import { saveMultipleFilesFromBuffer } from "../../services/fileSystem.js";
 import { generateCodeFile } from "../../lib/generators.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
 import { formatDate } from "../../lib/formatters.js";
+import { configurationProvider } from "../../config/configurationManager.js";
 
 export const uploadMultipleVariantsFiles = async (req, res) => {
     let createdFiles = [];
@@ -179,6 +180,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                     mainFileData.hasVariants,
                     mainFileData.sizeBytes,
                     mainFileData.md5,
+                    null,
                     t
                 );
 
@@ -224,6 +226,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                             false, // has_variants (las variantes no tienen sub-variantes)
                             variantFile.sizeBytes,
                             variantFile.md5,
+                            null,
                             t
                         );
 
@@ -481,6 +484,7 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                         false, // has_variants (batch no tiene variantes)
                         file.sizeBytes,
                         file.md5,
+                        null,
                         t
                     );
 

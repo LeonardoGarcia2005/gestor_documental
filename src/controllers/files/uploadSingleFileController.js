@@ -105,6 +105,7 @@ export const uploadSingleFile = async (req, res) => {
         false,
         sizeBytes,
         md5,
+        null,
         t
       );
 

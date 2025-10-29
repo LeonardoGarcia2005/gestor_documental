@@ -122,18 +122,6 @@ const insertFileParameterValue = async (fileId, routeRuleId, routeParameterValue
             t
         );
 
-        loggerGlobal.info({
-            message: 'Parámetros dinámicos insertados exitosamente',
-            fileId,
-            routeRuleId,
-            inserted: valuesToInsert.length,
-            skipped: skippedStatic.length,
-            parameters: dynamicParams.map(p => ({
-                name: p.parameterName,
-                value: p.value
-            }))
-        });
-
         return resultFileParameterValue;
 
     } catch (err) {
@@ -174,11 +162,11 @@ const buildFilePathFromCode = async (codeFile) => {
 
         const routeParams = await dbConnectionProvider.getAll(
             routeParamsQuery,
-            [fileData.route_rule_id]
+            [fileData.routeRuleId]
         );
 
         if (!routeParams || routeParams.length === 0) {
-            throw new Error(`No se encontraron parámetros de ruta para route_rule_id: ${fileData.route_rule_id}`);
+            throw new Error(`No se encontraron parámetros de ruta para route_rule_id: ${fileData.routeRuleId}`);
         }
 
         const separatorChar = routeParams[0].separator_char || path.sep;
@@ -219,7 +207,7 @@ const buildFilePathFromCode = async (codeFile) => {
 
         const relativePath = routeParts.join(separatorChar);
         // Se añade la ruta construida y a su vez el nombre del archivo
-        const fullRoutePath = `${relativePath}/${fileData.file_name}`;
+        const fullRoutePath = `${relativePath}/${fileData.fileName}`;
 
         return fullRoutePath;
 

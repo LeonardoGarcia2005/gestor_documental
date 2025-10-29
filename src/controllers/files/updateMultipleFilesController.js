@@ -8,16 +8,28 @@ import { sanitizeFileName } from "../../lib/formatters.js";
 import {
   replaceFileFromBuffer,
   checkFileExists,
+  saveFileFromBuffer,
 } from "../../services/fileSystem.js";
 import calculateMD5 from "../../lib/calculateMD5.js";
 import { buildFileUrl } from "../../lib/builder.js";
 import { configurationProvider } from "../../config/configurationManager.js";
+import { generateCodeFile } from "../../lib/generators.js";
 
+/**
+ * Actualiza múltiples archivos con lógica de copy-on-write y deduplicación
+ * 
+ * Comportamientos:
+ * 1. Si reference_count = 1 y is_shared = false → Actualización in-place (mismo código)
+ * 2. Si reference_count > 1 o is_shared = true:
+ *    a. Si nuevo MD5 ya existe → Reutilizar archivo (incrementar contador, retornar código existente)
+ *    b. Si nuevo MD5 no existe → Crear nuevo archivo (nuevo código)
+ */
 export const updateMultipleFiles = async (req, res) => {
   const fileToUpdate = req.fileToUpdate;
   const processedFiles = req.processedFiles;
   const { securityLevel } = req.body;
 
+  // ========== VALIDACIONES INICIALES ==========
   if (!fileToUpdate || fileToUpdate.length === 0) {
     return res.status(400).json({
       message: "No se recibieron archivos para actualizar",
@@ -35,21 +47,28 @@ export const updateMultipleFiles = async (req, res) => {
     configurationProvider.uploads.securityPublicLevel?.toLowerCase() || "public";
   const isPublicFile = securityLevel?.toLowerCase() === publicSecurityLevel;
 
-  // Guardamos copias de seguridad de los archivos originales
+  // ========== ESTRUCTURAS PARA ROLLBACK ==========
   const backupFiles = [];
-  const updatedFilePaths = [];
-  const updatedFilesInfo = [];
+
+  // ========== CATEGORIZACIÓN DE RESULTADOS ==========
+  const updatedInPlace = [];      // Actualizaciones normales (mismo código)
+  const newFilesCreated = [];     // Nuevos archivos creados (nuevo código)
+  const filesReused = [];         // Archivos reutilizados (código existente diferente)
 
   try {
     const validatedData = [];
 
-    // FASE 1: Validación y preparación (sin modificar nada aún)
+    // ========== VALIDACIÓN Y PREPARACIÓN ==========
+    loggerGlobal.info(`Iniciando actualización de ${fileToUpdate.length} archivos`);
+
     for (let i = 0; i < fileToUpdate.length; i++) {
       const f = fileToUpdate[i];
       const processed = processedFiles[i];
+      const codeFile = f.code;
 
+      // Validar estructura básica
       if (!f.file || !f.file.originalname) {
-        throw new Error(`Falta información del archivo (${f.code})`);
+        throw new Error(`Falta información del archivo (${codeFile})`);
       }
 
       if (!processed || !processed.extensionId) {
@@ -58,187 +77,233 @@ export const updateMultipleFiles = async (req, res) => {
         );
       }
 
-      const fileName = sanitizeFileName(f.file.originalname, "50");
-      const fileSize = f.file.size;
-      const md5 = calculateMD5(f.file.buffer);
-      const oldCode = f.code;
-
-      const oldFile = await filesDAO.getFileByCode(oldCode);
-      if (!oldFile) {
-        throw new Error(`El archivo con código ${oldCode} no se encontró.`);
+      // Obtener archivo original de la BD
+      const originalFile = await filesDAO.getFileByCode(codeFile);
+      if (!originalFile) {
+        throw new Error(`El archivo con código ${codeFile} no se encontró.`);
       }
 
-      /*       const fileExists = await filesDAO.getFileByMd5AndRouteRuleId(
-        md5,
-        oldFile.route_rule_id
-      );
-      if (fileExists) {
-        return res.status(200).json({
-          success: false,
-          message:
-            "La imagen no se cargó porque ya existe una copia idéntica en esta ubicación.",
-          code: oldCode,
-        });
-      } */
-
-      const filePath = await fileParameterValueDAO.buildFilePathFromCode(
-        oldCode
-      );
+      // Calcular datos del nuevo archivo
+      const fileName = sanitizeFileName(f.file.originalname, "50");
+      const fileSize = f.file.size;
+      const newMd5 = calculateMD5(f.file.buffer);
 
       validatedData.push({
+        index: i,
+        codeFile,
         fileName,
-        oldCode,
         fileSize,
-        md5,
+        newMd5,
         extensionId: processed.extensionId,
-        filePath,
         buffer: f.file.buffer,
+        originalFile, // Guardamos toda la info del archivo original
       });
     }
 
-    // Actualización dentro de transacción
+    // ========== PROCESAMIENTO EN TRANSACCIÓN ==========
     await dbConnectionProvider.tx(async (t) => {
+
       for (const data of validatedData) {
-        // Crear backup del archivo original
-        const backupPath = `${data.filePath}.backup_${Date.now()}`;
-        try {
-          const originalExists = await checkFileExists(data.filePath);
-          if (originalExists) {
-            await fs.copyFile(data.filePath, backupPath);
-            // Guardamos el nombre ANTIGUO del archivo
-            backupFiles.push({
-              original: data.filePath,
-              backup: backupPath,
-              oldFileName: path.basename(data.filePath),
-            });
-          }
-        } catch (backupError) {
-          loggerGlobal.error(
-            `Error creando backup de ${data.filePath}:`,
-            backupError
-          );
-          throw new Error(
-            `No se pudo crear backup del archivo ${data.oldCode}`
-          );
-        }
+        const { originalFile, newMd5, codeFile, fileName, fileSize, extensionId, buffer } = data;
 
-        // Actualizar base de datos
-        const updatedFile = await filesDAO.updateFile(
-          {
-            fileName: data.fileName,
-            oldCode: data.oldCode,
-            fileSize: data.fileSize,
-            md5: data.md5,
-            extensionId: data.extensionId,
-          },
-          t
-        );
+        // ========== DECISIÓN: ¿ACTUALIZACIÓN IN-PLACE O COPY-ON-WRITE? ==========
+        const isSharedFile = originalFile.referenceCount > 1 && originalFile.isShared === true;
 
-        // Reemplazar archivo físico
-        try {
-          const result = await replaceFileFromBuffer(
-            data.filePath,
-            data.buffer,
-            data.fileName
+        if (!isSharedFile) {
+          // ==========================================
+          // ACTUALIZACIÓN IN-PLACE (NORMAL)
+          // ==========================================
+          loggerGlobal.info(`[IN-PLACE] Actualizando archivo ${codeFile} directamente`);
+
+          // Construir ruta del archivo
+          const filePath = await fileParameterValueDAO.buildFilePathFromCode(codeFile);
+
+          // Crear backup del archivo original
+          await createBackup(filePath, backupFiles);
+
+          // Actualizar en base de datos
+          await filesDAO.updateFile(
+            {
+              fileName,
+              oldCode: codeFile,
+              fileSize,
+              md5: newMd5,
+              extensionId,
+            },
+            t
           );
 
-          // ACTUALIZAR el backup con la NUEVA ruta después del rename
-          const backupIndex = backupFiles.findIndex(
-            (b) => b.original === data.filePath
-          );
-          if (backupIndex !== -1) {
-            backupFiles[backupIndex].original = result.filePath;
-            backupFiles[backupIndex].newFileName = data.fileName;
-          }
+          // Reemplazar archivo físico
+          const result = await replaceFileFromBuffer(filePath, buffer, fileName);
 
-          updatedFilePaths.push(result.filePath);
+          // Actualizar backup con nueva ruta (por si cambió el nombre)
+          updateBackupPath(backupFiles, filePath, result.filePath, fileName);
 
-          // Construir información del archivo actualizado
+          // Construir respuesta
           const fileInfo = {
-            codeFile: data.oldCode,
-            fileName: data.fileName,
+            oldCode: codeFile,
+            newCode: codeFile,
+            fileName,
           };
 
-          // Solo incluir URL si es público
           if (isPublicFile) {
-            try {
-              fileInfo.fileUrl = buildFileUrl(result.filePath);
-            } catch (urlError) {
-              loggerGlobal.warn(
-                `No se pudo construir URL para ${data.oldCode}:`,
-                urlError
-              );
-              // Continuar sin la URL si falla
-            }
+            fileInfo.fileUrl = buildFileUrl(result.filePath);
           }
 
-          updatedFilesInfo.push(fileInfo);
-        } catch (fileError) {
-          loggerGlobal.error(
-            `Error reemplazando archivo ${data.filePath}:`,
-            fileError
+          updatedInPlace.push(fileInfo);
+
+        } else {
+          // =============================
+          // COPY-ON-WRITE O REUTILIZACIÓN
+          // =============================
+          loggerGlobal.info(`[SHARED] Archivo compartido ${codeFile}, buscando deduplicación...`);
+
+          // Buscar si ya existe un archivo con el nuevo MD5
+          const existingFile = await filesDAO.getFileByMd5AndRouteRuleId(
+            newMd5,
+            originalFile.routeRuleId
           );
-          throw new Error(
-            `No se pudo reemplazar el archivo físico ${data.oldCode}: ${fileError.message}`
-          );
+
+          if (existingFile) {
+            // =============================
+            // ARCHIVO REUTILIZADO (DEDUPLICACIÓN)
+            // =============================
+            loggerGlobal.info(`[REUSED] Archivo con MD5 ${newMd5} ya existe: ${existingFile.codeFile}`);
+
+            // Obtener el ID del archivo existente para poder incrementar su contador
+            const existingFileData = await filesDAO.getFileByCode(existingFile.codeFile);
+
+            if (!existingFileData) {
+              throw new Error(`No se pudo obtener datos del archivo existente: ${existingFile.codeFile}`);
+            }
+
+            // Incrementar contador del archivo existente
+            await filesDAO.updateFileStatusAtomic(existingFileData.id, true, t);
+
+            // Decrementar contador del archivo original
+            await filesDAO.updateFileStatusAtomic(originalFile.id, false, t);
+
+            // Construir ruta para respuesta
+            const existingFilePath = await fileParameterValueDAO.buildFilePathFromCode(existingFile.codeFile);
+
+            // Construir respuesta
+            const fileInfo = {
+              oldCode: codeFile,
+              newCode: existingFile.codeFile,
+              fileName: existingFile.fileName,
+            };
+
+            if (isPublicFile) {
+              fileInfo.fileUrl = buildFileUrl(existingFilePath);
+            }
+
+            filesReused.push(fileInfo);
+
+          } else {
+            // =============================
+            // CREAR NUEVO ARCHIVO (COPY-ON-WRITE)
+            // =============================
+            loggerGlobal.info(`[NEW] Creando nuevo archivo para ${codeFile}`);
+
+            // Generar nuevo código único
+            const newCode = generateCodeFile();
+
+            // Construir el nuevo nombre de archivo con el código
+            const lastDotIndex = fileName.lastIndexOf('.');
+            const fileNameWithoutExt = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
+            const fileExtension = lastDotIndex !== -1 ? fileName.substring(lastDotIndex + 1) : '';
+            const newFileName = fileExtension
+              ? `${fileNameWithoutExt}-${newCode}.${fileExtension}`
+              : `${fileNameWithoutExt}-${newCode}`;
+
+            loggerGlobal.info(`[NEW] Nombre del nuevo archivo: ${newFileName}`);
+
+            // Crear nuevo registro en BD
+            const newFileRecord = await filesDAO.insertFile(
+              originalFile.companyId,
+              originalFile.documentTypeId,
+              originalFile.channelId,
+              originalFile.securityLevelId,
+              extensionId,
+              newCode,
+              true, // is_used
+              originalFile.routeRuleId,
+              newFileName,
+              originalFile.documentEmissionDate,
+              originalFile.documentExpirationDate,
+              originalFile.hasVariants,
+              fileSize,
+              newMd5,
+              1,
+              t
+            );
+
+            // Copiar parámetros del archivo original al nuevo
+            await filesDAO.copyFileParameters(originalFile.id, newFileRecord.id, t);
+
+            // Construir ruta del archivo ORIGINAL
+            const originalFilePath = await fileParameterValueDAO.buildFilePathFromCode(originalFile.code);
+
+            // Dividir por el separador y reemplazar el último elemento (nombre del archivo)
+            const pathParts = originalFilePath.split('/');
+            pathParts[pathParts.length - 1] = newFileName;
+            const newFilePath = pathParts.join('/');
+
+            loggerGlobal.info(`[NEW] Ruta completa del nuevo archivo: ${newFilePath}`);
+
+            // Guardar archivo físico
+            await saveFileFromBuffer(newFilePath, buffer);
+
+            // Decrementar contador del archivo original
+            await filesDAO.updateFileStatusAtomic(originalFile.id, false, t);
+
+            // Construir respuesta
+            const fileInfo = {
+              oldCode: codeFile,
+              newCode: newCode,
+              fileName,
+            };
+
+            if (isPublicFile) {
+              fileInfo.fileUrl = buildFileUrl(newFilePath);
+            }
+
+            newFilesCreated.push(fileInfo);
+          }
         }
       }
     });
 
-    // Éxito - eliminar backups
-    for (const { backup } of backupFiles) {
-      try {
-        await fs.unlink(backup);
-      } catch (cleanupError) {
-        loggerGlobal.warn(
-          `No se pudo eliminar backup ${backup}:`,
-          cleanupError
-        );
-      }
-    }
+    // =============================
+    // ÉXITO: LIMPIAR BACKUPS
+    // =============================
+    await cleanupBackups(backupFiles);
+
+    loggerGlobal.info(`Actualización exitosa: ${updatedInPlace.length} in-place, ${newFilesCreated.length} nuevos, ${filesReused.length} reutilizados`);
 
     return res.status(200).json({
       success: true,
-      message: "Todos los archivos fueron actualizados exitosamente",
-      updatedCount: validatedData.length,
-      files: updatedFilesInfo,
+      message: "Todos los archivos fueron procesados exitosamente",
+      summary: {
+        total: validatedData.length,
+        updatedInPlace: updatedInPlace.length,
+        newFilesCreated: newFilesCreated.length,
+        filesReused: filesReused.length,
+      },
+      files: {
+        updatedInPlace,    // Archivos actualizados normalmente (mismo código)
+        newFilesCreated,   // Archivos nuevos creados (nuevo código)
+        filesReused,       // Archivos que ya existían (código existente)
+      },
     });
+
   } catch (error) {
     loggerGlobal.error("Error en updateMultipleFiles:", error);
 
-    // ROLLBACK - Restaurar archivos desde backups
-    if (backupFiles.length > 0) {
-      loggerGlobal.info("Iniciando rollback de archivos...");
-      for (const { original, backup, oldFileName } of backupFiles) {
-        try {
-          const backupExists = await checkFileExists(backup);
-          if (backupExists) {
-            // Calcular la ruta original (con el nombre ANTIGUO)
-            const dir = path.dirname(original);
-            const originalPath = oldFileName
-              ? path.join(dir, oldFileName)
-              : original;
-
-            // Primero, eliminar el archivo nuevo si existe
-            const newFileExists = await checkFileExists(original);
-            if (newFileExists) {
-              await fs.unlink(original);
-              loggerGlobal.info(`Archivo nuevo eliminado: ${original}`);
-            }
-
-            // Restaurar el backup con su nombre original
-            await fs.copyFile(backup, originalPath);
-            await fs.unlink(backup);
-            loggerGlobal.info(`Archivo restaurado: ${originalPath}`);
-          }
-        } catch (rollbackError) {
-          loggerGlobal.error(
-            `Error en rollback de ${original}:`,
-            rollbackError
-          );
-        }
-      }
-    }
+    // =============================
+    // ROLLBACK: RESTAURAR ARCHIVOS
+    // =============================
+    await rollbackFiles(backupFiles);
 
     return res.status(500).json({
       success: false,
@@ -247,3 +312,88 @@ export const updateMultipleFiles = async (req, res) => {
     });
   }
 };
+
+// ========== FUNCIONES AUXILIARES ==========
+
+/**
+ * Crea un backup del archivo antes de modificarlo
+ */
+const createBackup = async (filePath, backupFiles) => {
+  const backupPath = `${filePath}.backup_${Date.now()}`;
+
+  try {
+    const originalExists = await checkFileExists(filePath);
+    if (originalExists) {
+      await fs.copyFile(filePath, backupPath);
+      backupFiles.push({
+        original: filePath,
+        backup: backupPath,
+        oldFileName: path.basename(filePath),
+      });
+      loggerGlobal.info(`Backup creado: ${backupPath}`);
+    }
+  } catch (backupError) {
+    loggerGlobal.error(`Error creando backup de ${filePath}:`, backupError);
+    throw new Error(`No se pudo crear backup del archivo: ${filePath}`);
+  }
+}
+
+/**
+ * Actualiza la ruta del backup si el archivo fue renombrado
+ */
+const updateBackupPath = (backupFiles, oldPath, newPath, newFileName) => {
+  const backupIndex = backupFiles.findIndex((b) => b.original === oldPath);
+  if (backupIndex !== -1) {
+    backupFiles[backupIndex].original = newPath;
+    backupFiles[backupIndex].newFileName = newFileName;
+  }
+}
+
+/**
+ * Elimina los backups después de una operación exitosa
+ */
+const cleanupBackups = async (backupFiles) => {
+  for (const { backup } of backupFiles) {
+    try {
+      await fs.unlink(backup);
+      loggerGlobal.info(`Backup eliminado: ${backup}`);
+    } catch (cleanupError) {
+      loggerGlobal.warn(`No se pudo eliminar backup ${backup}:`, cleanupError);
+    }
+  }
+}
+
+/**
+ * Restaura los archivos desde los backups en caso de error
+ */
+const rollbackFiles = async (backupFiles) => {
+  if (backupFiles.length === 0) return;
+
+  loggerGlobal.info("Iniciando rollback de archivos...");
+
+  for (const { original, backup, oldFileName } of backupFiles) {
+    try {
+      const backupExists = await checkFileExists(backup);
+      if (!backupExists) continue;
+
+      // Calcular la ruta original (con el nombre ANTIGUO)
+      const dir = path.dirname(original);
+      const originalPath = oldFileName ? path.join(dir, oldFileName) : original;
+
+      // Eliminar el archivo nuevo si existe
+      const newFileExists = await checkFileExists(original);
+      if (newFileExists) {
+        await fs.unlink(original);
+        loggerGlobal.info(`Archivo nuevo eliminado: ${original}`);
+      }
+
+      // Restaurar el backup
+      await fs.copyFile(backup, originalPath);
+      await fs.unlink(backup);
+      loggerGlobal.info(`Archivo restaurado: ${originalPath}`);
+
+    } catch (rollbackError) {
+      loggerGlobal.error(`Error en rollback de ${original}:`, rollbackError);
+    }
+  }
+}

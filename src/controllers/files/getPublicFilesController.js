@@ -36,7 +36,7 @@ export const getPublicFiles = async (req, res) => {
 
           return {
             id: fileData.id,
-            file_name: fileData.file_name,
+            fileName: fileData.fileName,
             url: fileUrl,
           };
 

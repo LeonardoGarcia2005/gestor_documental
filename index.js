@@ -69,8 +69,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static('src/public'));
-
 // Saludo del gestor documental
 app.get("/gestor/", (req, res) => {
   // Detectar el entorno (puedes ajustar esta lógica según tu configuración)

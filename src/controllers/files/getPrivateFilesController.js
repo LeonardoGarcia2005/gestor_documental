@@ -26,7 +26,7 @@ export const getPrivateFiles = async (req, res) => {
       return {
         id: fileData.id,
         code,
-        file_name: fileData.file_name,
+        fileName: fileData.fileName,
         url: signedUrl,
         expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // +2h
       };

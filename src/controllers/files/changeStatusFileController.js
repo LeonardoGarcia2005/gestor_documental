@@ -6,59 +6,53 @@ export const changeStatusFile = async (req, res) => {
   try {
     const { codeFile, isActive } = req.body;
 
-    let newRefCount = null;
-    let file = null;
-
-    await dbConnectionProvider.tx(async (t) => {
-      file = await filesDAO.getFileByCode(codeFile);
+    const result = await dbConnectionProvider.tx(async (t) => {
+      // Obtener y bloquear el registro
+      const file = await filesDAO.getFileByCodeForUpdate(codeFile, t);
 
       if (!file) {
         throw new Error(`Archivo con código ${codeFile} no encontrado`);
       }
 
-      if (!isActive) {
-        // DECREMENTAR: Un servicio deja de usar el archivo
-        if(file.referenceCount > 0){
-          newRefCount = await filesDAO.decrementReferenceCount(file.id, file.referenceCount - 1, t);
-        } else {
-          newRefCount = 0;
-        }
-
-        // Solo marcar como NO USADO si YA NO HAY NINGUNA REFERENCIA
-        if (newRefCount === 0) {
-          await filesDAO.changeStatusFile(file.id, false);
-          await filesDAO.markAsShared(file.id, false, t);
-          loggerGlobal.info(`Archivo ${codeFile} sin referencias. Marcado como no usado.`);
-        } else if (newRefCount === 1) {
-          // Ya no es compartido, pero SIGUE USADO
-          await filesDAO.markAsShared(file.id, false, t);
-          loggerGlobal.info(`Archivo ${codeFile} ahora tiene 1 referencia (no compartido, pero sigue usado).`);
-        } else {
-          loggerGlobal.info(`Archivo ${codeFile} aún tiene ${newRefCount} referencias (compartido y usado).`);
-        }
-
-      } else {
-        // INCREMENTAR: Un servicio empieza a usar el archivo
-        newRefCount = await filesDAO.incrementReferenceCount(file.id, file.referenceCount + 1, t);
-
-        // Marcar como USADO (si no lo estaba ya)
-        if (!file.isUsed) {
-          await filesDAO.changeStatusFile(file.id, true);
-        }
-
-        // Marcar como compartido si tiene más de 1 referencia
-        if (newRefCount > 1) {
-          await filesDAO.markAsShared(file.id, true, t);
-          loggerGlobal.info(`Archivo ${codeFile} ahora tiene ${newRefCount} referencias (compartido).`);
-        } else {
-          loggerGlobal.info(`Archivo ${codeFile} tiene 1 referencia (no compartido).`);
-        }
+      // Evaluar que los valores a actualizar no sean los mismos que ya tiene el registro si no lanzar un mensaje de que no se actualizaron los valores
+      if (file.is_used === false && isActive === false) {
+        return res.status(200).json({
+          success: true,
+          message: "El archivo ya se encuentra marcado como no usado.",
+          data: {
+            referenceCount: file.reference_count,
+            isUsed: file.is_used,
+            isShared: file.is_shared
+          }
+        });
       }
-    });
+
+      // Actualizar todo en UNA SOLA operación atómica
+      const updatedFile = await filesDAO.updateFileStatusAtomic(
+          file.id,
+          isActive,
+          t
+        );
+
+        if (file.reference_count === 0) {
+          loggerGlobal.info(`Archivo ${codeFile} sin referencias. Marcado como no usado.`);
+        } else if (file.reference_count === 1) {
+          loggerGlobal.info(`Archivo ${codeFile} tiene 1 referencia (no compartido).`);
+        } else {
+          loggerGlobal.info(`Archivo ${codeFile} tiene ${file.reference_count} referencias (compartido).`);
+        }
+
+        return updatedFile;
+      });
 
     return res.status(200).json({
       success: true,
       message: "Estado de archivo actualizado exitosamente",
+      data: {
+        referenceCount: result.reference_count,
+        isUsed: result.is_used,
+        isShared: result.is_shared
+      }
     });
 
   } catch (error) {
