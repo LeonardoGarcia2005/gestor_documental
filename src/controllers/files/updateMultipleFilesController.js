@@ -14,6 +14,7 @@ import calculateMD5 from "../../lib/calculateMD5.js";
 import { buildFileUrl } from "../../lib/builder.js";
 import { configurationProvider } from "../../config/configurationManager.js";
 import { generateCodeFile } from "../../lib/generators.js";
+import { formatNameByCode } from "../../lib/formatters.js";
 
 /**
  * Actualiza múltiples archivos con lógica de copy-on-write y deduplicación
@@ -83,6 +84,14 @@ export const updateMultipleFiles = async (req, res) => {
         throw new Error(`El archivo con código ${codeFile} no se encontró.`);
       }
 
+      // VALIDACIÓN TEMPRANA: Verificar si el archivo está en uso
+      // Si no está compartido Y el reference_count es 0, significa que nunca fue activado
+      const isSharedFile = originalFile.referenceCount > 1 && originalFile.isShared === true;
+      
+      if (!isSharedFile && originalFile.referenceCount === 0) {
+        throw new Error(`El archivo con código ${codeFile} no se ha activado, entonces no se puede actualizar`);
+      }
+
       // Calcular datos del nuevo archivo
       const fileName = sanitizeFileName(f.file.originalname, "50");
       const fileSize = f.file.size;
@@ -133,22 +142,21 @@ export const updateMultipleFiles = async (req, res) => {
             t
           );
 
+          // Se ajusta el fileName para que tenga tanto el codigo como la extension
+          const newFileName = formatNameByCode(fileName, codeFile);
+
           // Reemplazar archivo físico
-          const result = await replaceFileFromBuffer(filePath, buffer, fileName);
+          const result = await replaceFileFromBuffer(filePath, buffer, newFileName);
 
           // Actualizar backup con nueva ruta (por si cambió el nombre)
-          updateBackupPath(backupFiles, filePath, result.filePath, fileName);
+          updateBackupPath(backupFiles, filePath, result.filePath, newFileName);
 
           // Construir respuesta
           const fileInfo = {
-            oldCode: codeFile,
             newCode: codeFile,
-            fileName,
+            fileName: newFileName,
+            fileUrl: buildFileUrl(result.filePath),
           };
-
-          if (isPublicFile) {
-            fileInfo.fileUrl = buildFileUrl(result.filePath);
-          }
 
           updatedInPlace.push(fileInfo);
 
@@ -191,11 +199,8 @@ export const updateMultipleFiles = async (req, res) => {
               oldCode: codeFile,
               newCode: existingFile.codeFile,
               fileName: existingFile.fileName,
+              fileUrl: buildFileUrl(existingFilePath),
             };
-
-            if (isPublicFile) {
-              fileInfo.fileUrl = buildFileUrl(existingFilePath);
-            }
 
             filesReused.push(fileInfo);
 
@@ -209,12 +214,7 @@ export const updateMultipleFiles = async (req, res) => {
             const newCode = generateCodeFile();
 
             // Construir el nuevo nombre de archivo con el código
-            const lastDotIndex = fileName.lastIndexOf('.');
-            const fileNameWithoutExt = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
-            const fileExtension = lastDotIndex !== -1 ? fileName.substring(lastDotIndex + 1) : '';
-            const newFileName = fileExtension
-              ? `${fileNameWithoutExt}-${newCode}.${fileExtension}`
-              : `${fileNameWithoutExt}-${newCode}`;
+            const newFileName = formatNameByCode(fileName, newCode);
 
             loggerGlobal.info(`[NEW] Nombre del nuevo archivo: ${newFileName}`);
 
@@ -261,7 +261,7 @@ export const updateMultipleFiles = async (req, res) => {
             const fileInfo = {
               oldCode: codeFile,
               newCode: newCode,
-              fileName,
+              fileName: newFileName,
             };
 
             if (isPublicFile) {

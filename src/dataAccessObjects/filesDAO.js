@@ -28,7 +28,9 @@ const getFileByCode = async (codeFile) => {
       FROM file AS f
       JOIN security_level sl ON f.security_level_id = sl.id
       JOIN document_type dt ON f.document_type_id = dt.id
-      WHERE f.code = $1 AND f.status = TRUE AND is_backup = FALSE
+      WHERE f.code = $1 
+        AND f.status = TRUE 
+        AND is_backup = FALSE
     `;
 
     const values = [codeFile];
@@ -67,7 +69,9 @@ const getFilesByCodes = async (codes) => {
         sl.type AS "securityLevel"
       FROM file AS f
       JOIN security_level sl ON f.security_level_id = sl.id
-      WHERE f.code IN (${placeholders}) AND f.status = TRUE AND is_backup = FALSE
+      WHERE f.code IN (${placeholders}) 
+        AND f.status = TRUE 
+        AND is_backup = FALSE
     `;
 
     const result = await dbConnectionProvider.getAll(
@@ -251,7 +255,7 @@ const insertFile = async (
       file_hash_md5: fileHashMd5,
       document_emission_date: documentEmissionDate,
       document_expiration_date: documentExpirationDate,
-      creation_date: new Date(),
+      creation_date: 'NOW()',
       modification_date: null,
       deactivation_date: null,
       reference_count: referenceCount == null ? 0 : referenceCount,

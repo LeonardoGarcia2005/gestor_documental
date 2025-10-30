@@ -22,7 +22,7 @@
     "maxFilesCount": 30,
     "maxFilenameLength": 50,
     "maxFieldSizeKB": 1024,
-    "pathPublicNginx": "/mnt/gestor_documental_dev/publico/",
+    "pathPublicNginx": "/mnt/gestor_documental_test/publico/",
     "securityPublicLevel": "public"
   },
   "files": {
@@ -37,8 +37,8 @@
     "prefix": "/gestor-dev/api"
   },
   "backup": {
-    "pathPublic": "/mnt/db_files/respaldo_gestor_documental_dev/public/",
-    "pathPrivate": "/mnt/db_files/respaldo_gestor_documental_dev/private/"
+    "pathPublic": "/mnt/db_files/respaldo_gestor_documental_test/public/",
+    "pathPrivate": "/mnt/db_files/respaldo_gestor_documental_test/private/"
   },
   "pgBoss": {
     "schema": "pgboss"
