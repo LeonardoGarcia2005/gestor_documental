@@ -262,11 +262,8 @@ export const updateMultipleFiles = async (req, res) => {
               oldCode: codeFile,
               newCode: newCode,
               fileName: newFileName,
+              fileUrl: buildFileUrl(newFilePath),
             };
-
-            if (isPublicFile) {
-              fileInfo.fileUrl = buildFileUrl(newFilePath);
-            }
 
             newFilesCreated.push(fileInfo);
           }
