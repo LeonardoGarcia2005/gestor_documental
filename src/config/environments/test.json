@@ -34,7 +34,7 @@
     "publicLocation": "/gestor-documental-dev"
   },
   "api": {
-    "prefix": "/gestor-dev/api"
+    "prefix": "/gestor-test/api"
   },
   "backup": {
     "pathPublic": "/mnt/db_files/respaldo_gestor_documental_test/public/",

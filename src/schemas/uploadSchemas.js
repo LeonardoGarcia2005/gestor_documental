@@ -13,134 +13,280 @@ import { configurationProvider } from "../config/configurationManager.js";
 
 const Joi = BaseJoi.extend(JoiDate);
 
+// Tipos excluidos (sin video y audio)
 const typesExcluded = fileTypes.filter(
   (type) => type !== "video" && type !== "audio"
 );
 
-// Esquema base
+// ============================================
+// SCHEMA BASE (compartido por todos)
+// ============================================
 const baseFileSchema = {
   channel: Joi.string()
     .valid(...channels)
-    .required(),
+    .required()
+    .messages({
+      "any.required": "El canal es requerido",
+      "any.only": `El canal debe ser uno de: ${channels.join(", ")}`,
+    }),
 
   documentType: Joi.string()
     .valid(...documentTypes)
-    .required(),
+    .required()
+    .messages({
+      "any.required": "El tipo de documento es requerido",
+      "any.only": `El tipo debe ser uno de: ${documentTypes.join(", ")}`,
+    }),
 
-  hasCompany: Joi.boolean().required(),
+  hasCompany: Joi.boolean()
+    .required()
+    .messages({
+      "any.required": "hasCompany es requerido",
+      "boolean.base": "hasCompany debe ser true o false",
+    }),
 
   securityLevel: Joi.string()
     .valid(...securityLevels)
-    .required(),
+    .required()
+    .messages({
+      "any.required": "El nivel de seguridad es requerido",
+      "any.only": `Debe ser uno de: ${securityLevels.join(", ")}`,
+    }),
 
   emissionDate: Joi.date()
     .format("YYYY-MM-DD")
     .min("1900-01-01")
     .max("now")
     .allow(null, "")
-    .optional(),
+    .optional()
+    .messages({
+      "date.format": "La fecha de emisión debe estar en formato YYYY-MM-DD",
+      "date.max": "La fecha de emisión no puede ser futura",
+    }),
 
   expirationDate: Joi.date()
     .format("YYYY-MM-DD")
     .min(Joi.ref("emissionDate"))
     .max("2125-01-01")
     .allow(null, "")
-    .optional(),
-
-  metadata: Joi.alternatives()
-    .try(
-      Joi.array().items(
-        Joi.object({
-          clave: Joi.string().max(100).required(),
-          valor: Joi.string().max(500).required(),
-        })
-      ),
-      Joi.string().max(2000)
-    )
     .optional()
-    .custom((value, helpers) => {
-      if (typeof value === "string") {
-        try {
-          const parsed = JSON.parse(value);
-          if (JSON.stringify(parsed).length > 2000) {
-            return helpers.error("metadata.tooComplex");
-          }
-          return parsed;
-        } catch (error) {
-          return helpers.error("metadata.invalidJson");
-        }
-      }
-      return value;
-    }),
+    .messages({
+      "date.format": "La fecha de expiración debe estar en formato YYYY-MM-DD",
+      "date.min": "La fecha de expiración debe ser posterior a la de emisión",
+    })
 };
 
-// Validación personalizada para archivos privados
+// ============================================
+// VALIDACIÓN PERSONALIZADA: Archivos privados
+// ============================================
 const validatePrivateFileSecurity = (value, helpers) => {
   const { securityLevel, hasCompany } = helpers.state.ancestors[0];
-  
-  if (securityLevel === "privado" && hasCompany !== true) {
+
+  if (securityLevel === "private" && hasCompany !== true) {
     return helpers.error("any.invalid", {
       message: "Los archivos privados deben tener hasCompany en true (deben estar asociados a una empresa)"
     });
   }
-  
+
   return value;
 };
 
-// Esquema para archivo único
+// ============================================
+// SCHEMA 1: Archivo único (SIN typeOfFile)
+// ============================================
+/**
+ * POST /upload/single
+ * 
+ * Sube un archivo individual.
+ * NO requiere typeOfFile (se detecta automáticamente por extensión)
+ * deviceType es OPCIONAL (para especificar dispositivo si aplica)
+ */
 export const createSingleFileSchema = Joi.object({
   ...baseFileSchema,
+
   typeOfFile: Joi.string()
-    .valid(...fileTypes)
-    .required(),
+    .required()
+    .messages({
+      "any.required": "El tipo de archivo es requerido",
+    }),
+
   file: Joi.any()
     .custom(secureFileValidator)
     .custom(validatePrivateFileSecurity)
     .required()
     .messages({
-      "file.required": "El archivo es requerido",
-      "file.invalidSignature":
-        "El archivo no coincide con su tipo declarado (posible spoofing)",
-      "file.suspiciousContent":
-        "El archivo contiene contenido potencialmente malicioso",
+      "any.required": "El archivo es requerido",
+      "file.invalidSignature": "El archivo no coincide con su tipo declarado (posible spoofing)",
+      "file.suspiciousContent": "El archivo contiene contenido potencialmente malicioso",
       "file.unknownType": "El tipo de archivo no pudo ser determinado",
       "file.unsupportedType": "El tipo de archivo no está permitido",
       "any.invalid": "Los archivos privados deben tener hasCompany en true (deben estar asociados a una empresa)",
     }),
 });
 
-// Esquema para múltiples archivos
-export const createMultipleFilesSchema = (isDistinct = true) => Joi.object({
+// ============================================
+// SCHEMA 2: Variantes (CON typeOfFile y deviceType REQUERIDO)
+// ============================================
+/**
+ * POST /upload/multiple/variants
+ * 
+ * Sube múltiples VARIANTES del mismo archivo lógico.
+ * - Todos comparten los mismos metadatos base
+ * - deviceType es REQUERIDO para identificar cada variante
+ * - typeOfFile es requerido para todas las variantes
+ */
+export const createVariantsSchema = Joi.object({
   ...baseFileSchema,
+
   typeOfFile: Joi.string()
     .valid(...typesExcluded)
-    .required(),
+    .required()
+    .messages({
+      "any.required": "El tipo de archivo es requerido",
+      "any.only": `El tipo debe ser uno de: ${typesExcluded.join(", ")}`,
+    }),
+
   filesData: Joi.array()
     .items(
-      isDistinct
-        ? Joi.object({ 
-            file: Joi.any()
-              .custom(secureFileValidator)
-              .custom(validatePrivateFileSecurity)
-              .required() 
-          }).required()
-        : Joi.object({
-            file: Joi.any()
-              .custom(secureFileValidator)
-              .custom(validatePrivateFileSecurity)
-              .required(),
-            deviceType: Joi.string().valid(...deviceTypes).required(),
-          }).required()
+      Joi.object({
+        file: Joi.any()
+          .custom(secureFileValidator)
+          .custom(validatePrivateFileSecurity)
+          .required(),
+        deviceType: Joi.string()
+          .valid(...deviceTypes)
+          .required()
+          .messages({
+            "any.required": "deviceType es requerido para cada variante",
+            "any.only": `deviceType debe ser uno de: ${deviceTypes.join(", ")}`,
+          }),
+      })
     )
     .min(1)
     .max(configurationProvider.uploads.maxFilesCount)
     .required()
     .messages({
-      "array.min": "Debe enviar al menos 1 archivo",
-      "array.max": `No puede enviar más de ${
-        configurationProvider.uploads.maxFilesCount
-      } archivos`,
-      "any.required": "El array de archivos es requerido",
-      "any.invalid": "Los archivos privados deben tener hasCompany en true (deben estar asociados a una empresa)",
+      "array.min": "Debe enviar al menos 1 variante",
+      "array.max": `No puede enviar más de ${configurationProvider.uploads.maxFilesCount} variantes`,
+      "any.required": "El array de variantes es requerido",
+      "any.invalid": "Los archivos privados deben tener hasCompany en true",
     }),
+});
+
+// ============================================
+// SCHEMA 3: Archivos distintos (CON typeOfFile, SIN deviceType)
+// ============================================
+/**
+ * POST /upload/multiple/distinct
+ * 
+ * Sube múltiples archivos INDEPENDIENTES.
+ * - Cada archivo tiene sus propios metadatos
+ * - Los metadatos vienen como strings separados por comas
+ * - typeOfFile es requerido (puede ser compartido o individual)
+ * - deviceType NO se usa (cada archivo ya es independiente)
+ */
+export const createDistinctFilesSchema = Joi.object({
+  // Campos que vienen como strings separados por comas (o arrays)
+  channel: Joi.alternatives()
+    .try(
+      Joi.string().required(),
+      Joi.array().items(Joi.string().valid(...channels)).min(1)
+    )
+    .required()
+    .messages({
+      "any.required": "El campo channel es requerido",
+    }),
+
+  documentType: Joi.alternatives()
+    .try(
+      Joi.string().required(),
+      Joi.array().items(Joi.string().valid(...documentTypes)).min(1)
+    )
+    .required()
+    .messages({
+      "any.required": "El campo documentType es requerido",
+    }),
+
+  securityLevel: Joi.alternatives()
+    .try(
+      Joi.string().required(),
+      Joi.array().items(Joi.string().valid(...securityLevels)).min(1)
+    )
+    .required()
+    .messages({
+      "any.required": "El campo securityLevel es requerido",
+    }),
+
+  hasCompany: Joi.alternatives()
+    .try(
+      Joi.string().required(),
+      Joi.boolean(),
+      Joi.array().items(Joi.boolean()).min(1)
+    )
+    .required()
+    .messages({
+      "any.required": "El campo hasCompany es requerido",
+    }),
+
+  typeOfFile: Joi.alternatives()
+    .try(
+      Joi.string().required(),
+      Joi.array().items(Joi.string().valid(...typesExcluded)).min(1)
+    )
+    .required()
+    .messages({
+      "any.required": "El tipo de archivo es requerido",
+    }),
+
+  // Campos opcionales
+  emissionDate: Joi.alternatives()
+    .try(
+      Joi.string().optional(),
+      Joi.array().items(Joi.date().format("YYYY-MM-DD")).optional()
+    )
+    .optional(),
+
+  expirationDate: Joi.alternatives()
+    .try(
+      Joi.string().optional(),
+      Joi.array().items(Joi.date().format("YYYY-MM-DD")).optional()
+    )
+    .optional(),
+
+  metadata: Joi.alternatives()
+    .try(
+      Joi.string().optional(),
+      Joi.array().items(Joi.string()).optional()
+    )
+    .optional(),
+
+  // filesData será construido por el middleware validateSchema
+  filesData: Joi.array()
+    .items(
+      Joi.object({
+        file: Joi.any().required(),
+        channel: Joi.string().valid(...channels).required(),
+        documentType: Joi.string().valid(...documentTypes).required(),
+        securityLevel: Joi.string().valid(...securityLevels).required(),
+        hasCompany: Joi.boolean().required(),
+        typeOfFile: Joi.string().valid(...typesExcluded).required(),
+        // NO incluir deviceType
+        emissionDate: Joi.date().format("YYYY-MM-DD").allow(null).optional(),
+        expirationDate: Joi.date().format("YYYY-MM-DD").allow(null).optional(),
+        metadata: Joi.alternatives()
+          .try(
+            Joi.array().items(
+              Joi.object({
+                clave: Joi.string().max(100).required(),
+                valor: Joi.string().max(500).required(),
+              })
+            ),
+            Joi.string().max(2000)
+          )
+          .allow(null)
+          .optional(),
+      })
+    )
+    .min(1)
+    .optional(), // Opcional porque lo construye el middleware
 });

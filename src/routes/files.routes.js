@@ -5,9 +5,9 @@ import { validateSchema } from "../middlewares/schemaCoreMiddleware.js";
 import { determineSecurityContext } from "../middlewares/securityContextMiddleware.js";
 import { measureUploadTime } from "../middlewares/performanceMetricsMiddleware.js";
 import { applyRouteRule } from "../middlewares/applyRouteRuleMiddleware.js";
-import { uploadSingleFile } from "../controllers/files/uploadSingleFileController.js";
+/* import { uploadSingleFile } from "../controllers/files/uploadSingleFileController.js"; */
 import { uploadMultipleVariantsFiles, uploadMultipleDistinctFiles } from "../controllers/files/uploadMultipleFilesController.js";
-import { createSingleFileSchema, createMultipleFilesSchema } from "../schemas/uploadSchemas.js";
+import { createSingleFileSchema, createVariantsSchema, createDistinctFilesSchema } from "../schemas/uploadSchemas.js";
 import { changeStatusFileSchema } from "../schemas/changeStatusFileShema.js";
 import { changeStatusFile } from "../controllers/files/changeStatusFileController.js";
 import { searchFilesSchema, searchFilesSchemaResizing } from "../schemas/searchFilesSchema.js"
@@ -33,19 +33,17 @@ router.patch(
 router.post(
   "/upload/single",
   handleSingleFile("file"),
-  validateSchema(createSingleFileSchema),
+  validateSchema(createSingleFileSchema, 'body', 'single'),
   attachFileExtensions,
   determineSecurityContext,
   applyRouteRule,
-  measureUploadTime,
-  uploadSingleFile
 );
 
 // Endpoint para subir MÚLTIPLES archivos que son iguales
 router.post(
   "/upload/multiple/variants",
   handleMultipleFiles('files'),
-  validateSchema(createMultipleFilesSchema(false), 'body', false),
+  validateSchema(createVariantsSchema, 'body', 'variants'),
   attachFileExtensions,
   determineSecurityContext,
   measureUploadTime,
@@ -57,7 +55,7 @@ router.post(
 router.post(
   "/upload/multiple/distinct",
   handleMultipleFiles('files'),
-  validateSchema(createMultipleFilesSchema(true), 'body', true),
+  validateSchema(createDistinctFilesSchema, 'body', 'distinct'),
   attachFileExtensions,
   determineSecurityContext,
   measureUploadTime,
@@ -69,7 +67,7 @@ router.post(
 router.put(
   "/update/multiple",
   handleMultipleFiles('files'),
-  validateSchema(updateMultipleFilesSchema, "body", false),
+  validateSchema(updateMultipleFilesSchema, "body", null),
   authenticateContext,
   attachFileExtensions,
   validateFilesCompany(),
