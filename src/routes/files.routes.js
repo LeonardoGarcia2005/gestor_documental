@@ -32,15 +32,10 @@ router.patch(
 // Endpoint para subir UN archivo (resolución original o específica)
 router.post(
   "/upload/single",
-  handleSingleFile("file"),
-  validateSchema(createSingleFileSchema, 'body', 'single'),
-  attachFileExtensions,
-  determineSecurityContext,
-  applyRouteRule,
 );
 
 // Endpoint para subir MÚLTIPLES archivos que son iguales
-router.post(
+/* router.post(
   "/upload/multiple/variants",
   handleMultipleFiles('files'),
   validateSchema(createVariantsSchema, 'body', 'variants'),
@@ -49,10 +44,10 @@ router.post(
   measureUploadTime,
   applyRouteRule,
   uploadMultipleVariantsFiles
-);
+); */
 
 // Endpoint para subir MÚLTIPLES archivos que son distintos
-router.post(
+/* router.post(
   "/upload/multiple/distinct",
   handleMultipleFiles('files'),
   validateSchema(createDistinctFilesSchema, 'body', 'distinct'),
@@ -62,9 +57,9 @@ router.post(
   applyRouteRule,
   uploadMultipleDistinctFiles
 );
-
+ */
 // Endpoint para actualizar MÚLTIPLES archivos
-router.put(
+/* router.put(
   "/update/multiple",
   handleMultipleFiles('files'),
   validateSchema(updateMultipleFilesSchema, "body", null),
@@ -72,33 +67,33 @@ router.put(
   attachFileExtensions,
   validateFilesCompany(),
   updateMultipleFiles
-);
+); */
 
 // Endpoint para obtener los archivos publicos sin hacer el resizing
-router.get(
+/* router.get(
   "/files/public/search",
   validateSchema(searchFilesSchema, 'query'),
   validatePublicFiles,
   getPublicFiles
-);
+); */
 
-router.get(
+/* router.get(
   "/files/private/search",
   validateSchema(searchFilesSchema, 'query'),
   authenticateContext,
   validateFilesCompany({ requiredSecurityLevel: 'private' }),
   getPrivateFiles
-);
+); */
 
-router.get(
+/* router.get(
   "/files/private/view/:code",
   viewPrivateFile
-);
+); */
 
-router.get(
+/* router.get(
   "/file/backup/:fileName",
   getBackupFile
-);
+); */
 
 // Endpoint para obtener los archivos publicos haciendo el resizing
 /* router.post(

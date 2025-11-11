@@ -92,15 +92,8 @@ const validatePrivateFileSecurity = (value, helpers) => {
 };
 
 // ============================================
-// SCHEMA 1: Archivo único (SIN typeOfFile)
+// Archivo único
 // ============================================
-/**
- * POST /upload/single
- * 
- * Sube un archivo individual.
- * NO requiere typeOfFile (se detecta automáticamente por extensión)
- * deviceType es OPCIONAL (para especificar dispositivo si aplica)
- */
 export const createSingleFileSchema = Joi.object({
   ...baseFileSchema,
 
@@ -125,16 +118,8 @@ export const createSingleFileSchema = Joi.object({
 });
 
 // ============================================
-// SCHEMA 2: Variantes (CON typeOfFile y deviceType REQUERIDO)
+// Subir multiples archivos
 // ============================================
-/**
- * POST /upload/multiple/variants
- * 
- * Sube múltiples VARIANTES del mismo archivo lógico.
- * - Todos comparten los mismos metadatos base
- * - deviceType es REQUERIDO para identificar cada variante
- * - typeOfFile es requerido para todas las variantes
- */
 export const createVariantsSchema = Joi.object({
   ...baseFileSchema,
 
@@ -174,17 +159,8 @@ export const createVariantsSchema = Joi.object({
 });
 
 // ============================================
-// SCHEMA 3: Archivos distintos (CON typeOfFile, SIN deviceType)
+// Archivos distintos
 // ============================================
-/**
- * POST /upload/multiple/distinct
- * 
- * Sube múltiples archivos INDEPENDIENTES.
- * - Cada archivo tiene sus propios metadatos
- * - Los metadatos vienen como strings separados por comas
- * - typeOfFile es requerido (puede ser compartido o individual)
- * - deviceType NO se usa (cada archivo ya es independiente)
- */
 export const createDistinctFilesSchema = Joi.object({
   // Campos que vienen como strings separados por comas (o arrays)
   channel: Joi.alternatives()
@@ -270,7 +246,6 @@ export const createDistinctFilesSchema = Joi.object({
         securityLevel: Joi.string().valid(...securityLevels).required(),
         hasCompany: Joi.boolean().required(),
         typeOfFile: Joi.string().valid(...typesExcluded).required(),
-        // NO incluir deviceType
         emissionDate: Joi.date().format("YYYY-MM-DD").allow(null).optional(),
         expirationDate: Joi.date().format("YYYY-MM-DD").allow(null).optional(),
         metadata: Joi.alternatives()
@@ -288,5 +263,5 @@ export const createDistinctFilesSchema = Joi.object({
       })
     )
     .min(1)
-    .optional(), // Opcional porque lo construye el middleware
+    .optional(),
 });
