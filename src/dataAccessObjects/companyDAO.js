@@ -1,4 +1,4 @@
-import { loggerGlobal } from "../../globalServices/logging/loggerManager.js";
+import { loggerGlobal } from "../logging/loggerManager.js";
 import { dbConnectionProvider } from "../config/db/dbConnectionManager.js";
 
 const getCompanyByCode = async (companyCode) => {

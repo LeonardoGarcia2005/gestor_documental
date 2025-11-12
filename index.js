@@ -8,9 +8,9 @@ import companyRouter from "./src/routes/company.routes.js"
 import { loggerGlobal } from './src/logging/loggerManager.js'
 import { app } from './app.js'
 import { exit } from 'node:process'
-import { backupFiles } from './src/services/backupFiles.js'
+/* import { backupFiles } from './src/services/backupFiles.js'
 import { initPgBoss, stopPgBoss } from './src/config/pgBoss.js'
-import { registerFileCleanupWorker } from './src/workers/fileCleanupWorker.js'
+import { registerFileCleanupWorker } from './src/workers/fileCleanupWorker.js' */
 import "./src/jobs/jobs.js";
 
 // Puerto del servidor web
@@ -70,7 +70,7 @@ app.use((req, res, next) => {
 });
 
 // Endpoint para testing de jobs
-app.post('/test/run-job', async (req, res) => {
+/* app.post('/test/run-job', async (req, res) => {
 
   try {
     let result;
@@ -83,7 +83,7 @@ app.post('/test/run-job', async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
-});
+}); */
 
 const PREFIX = configurationProvider.api.prefix
 
@@ -94,12 +94,12 @@ app.use(`${PREFIX}`, companyRouter)
 const startServer = async () => {
   try {
     // Inicializar pg-boss (conecta a PostgreSQL)
-    loggerGlobal.info('🚀 Inicializando pg-boss...');
-    await initPgBoss();
-    loggerGlobal.info('✅ pg-boss conectado a PostgreSQL');
+   /*  loggerGlobal.info('🚀 Inicializando pg-boss...'); */
+    /* await initPgBoss(); */
+  /*   loggerGlobal.info('✅ pg-boss conectado a PostgreSQL'); */
 
     // Registrar el worker (empieza a ESCUCHAR la cola)
-    await registerFileCleanupWorker();
+    /* await registerFileCleanupWorker(); */
 
     // Iniciar el servidor Express
     const server = app.listen(PUERTO_WEB, () => {
@@ -120,7 +120,7 @@ const startServer = async () => {
 // Cierre graceful (detiene pg-boss correctamente)
 const shutdown = async () => {
   loggerGlobal.info('🛑 Cerrando aplicación...');
-  await stopPgBoss();
+ /*  await stopPgBoss(); */
   process.exit(0);
 };
 

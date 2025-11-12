@@ -1,3 +1,5 @@
+import path from "path";
+
 export const normalizeFolderName = (name) => {
   if (!name || typeof name !== "string") {
     throw new Error(
@@ -21,4 +23,21 @@ export const normalizeCompanyName = (companyName) => {
     .replace(/\s+/g, " ") // Reemplaza múltiples espacios por uno solo
     .replace(/^[.\s-]+|[.\s-]+$/g, "") // Elimina puntos, espacios o guiones al inicio/final
     .slice(0, 100); // Limita a 100 caracteres máximo
+};
+
+export const sanitizeFileName = (filename, maxFilenameLength) => {
+  const ext = path.extname(filename);
+  const name = path.basename(filename, ext);
+
+  const sanitizedName = name
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9\-_]/g, "")
+    .replace(/[-_]{2,}/g, "_")
+    .replace(/^[-_]+|[-_]+$/g, "");
+
+  const finalName = sanitizedName || `archivo_${Date.now()}`;
+  const truncatedName = finalName.substring(0, maxFilenameLength);
+
+  return `${truncatedName}${ext.toLowerCase()}`;
 };

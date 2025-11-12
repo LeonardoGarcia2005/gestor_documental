@@ -13,14 +13,12 @@ import { configurationProvider } from "../config/configurationManager.js";
 
 const Joi = BaseJoi.extend(JoiDate);
 
-// Tipos excluidos (sin video y audio)
+// Tipos excluidos para cuando suban varios archivos ya que podria colapsar el sistema (sin video y audio)
 const typesExcluded = fileTypes.filter(
   (type) => type !== "video" && type !== "audio"
 );
 
-// ============================================
-// SCHEMA BASE (compartido por todos)
-// ============================================
+// Esquema base (compartido por todos)
 const baseFileSchema = {
   channel: Joi.string()
     .valid(...channels)
@@ -76,9 +74,7 @@ const baseFileSchema = {
     })
 };
 
-// ============================================
 // VALIDACIÓN PERSONALIZADA: Archivos privados
-// ============================================
 const validatePrivateFileSecurity = (value, helpers) => {
   const { securityLevel, hasCompany } = helpers.state.ancestors[0];
 
@@ -91,9 +87,7 @@ const validatePrivateFileSecurity = (value, helpers) => {
   return value;
 };
 
-// ============================================
-// Archivo único
-// ============================================
+// Esquema para subir un archivo unico
 export const createSingleFileSchema = Joi.object({
   ...baseFileSchema,
 
@@ -117,9 +111,7 @@ export const createSingleFileSchema = Joi.object({
     }),
 });
 
-// ============================================
-// Subir multiples archivos que son iguales
-// ============================================
+// Esquema para subir multiples archivos que son iguales
 export const createVariantsSchema = Joi.object({
   ...baseFileSchema,
 
@@ -158,9 +150,7 @@ export const createVariantsSchema = Joi.object({
     }),
 });
 
-// ============================================
-// Archivos distintos
-// ============================================
+// Esquema para subir archivos distintos y que puede tener diferentes valores en los campos divididos por comas
 export const createDistinctFilesSchema = Joi.object({
   // Campos que vienen como strings separados por comas (o arrays)
   channel: Joi.alternatives()
@@ -229,14 +219,7 @@ export const createDistinctFilesSchema = Joi.object({
     )
     .optional(),
 
-  metadata: Joi.alternatives()
-    .try(
-      Joi.string().optional(),
-      Joi.array().items(Joi.string()).optional()
-    )
-    .optional(),
-
-  // filesData será construido por el middleware validateSchema
+  // filesData será construido por el middleware validateSchemaMiddleware
   filesData: Joi.array()
     .items(
       Joi.object({
