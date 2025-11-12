@@ -1,6 +1,6 @@
 import { companyDAO } from "../../dataAccessObjects/companyDAO.js";
 
-const deleteCompany = async (_, res) => {
+const deleteCompany = async (req, res) => {
   try {
     // Validar que los datos requeridos estén presentes
     const { company_code } = req.body;
