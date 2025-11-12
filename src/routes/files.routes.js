@@ -29,13 +29,23 @@ router.patch(
   changeStatusFile
 );
 
-// Endpoint para subir UN archivo (resolución original o específica)
-router.post(
-  "/upload/single",
-);
-
-// Endpoint para subir MÚLTIPLES archivos que son iguales
+// Endpoint para subir UN archivo
+// TODO: Descomentar cuando se implemente uploadSingleFile
 /* router.post(
+  "/upload/single",
+  handleSingleFile('file'),
+  validateSchema(createSingleFileSchema, 'body', 'single'),
+  attachFileExtensions,
+  determineSecurityContext,
+  measureUploadTime,
+  applyRouteRule,
+  uploadSingleFile
+); */
+
+// Endpoint para subir MÚLTIPLES archivos - VARIANTES
+// Mismo archivo con diferentes resoluciones/dispositivos
+// Una imagen será la original, las demás se guardan en file_variant
+router.post(
   "/upload/multiple/variants",
   handleMultipleFiles('files'),
   validateSchema(createVariantsSchema, 'body', 'variants'),
@@ -44,10 +54,11 @@ router.post(
   measureUploadTime,
   applyRouteRule,
   uploadMultipleVariantsFiles
-); */
+);
 
-// Endpoint para subir MÚLTIPLES archivos que son distintos
-/* router.post(
+// Endpoint para subir MÚLTIPLES archivos - DISTINTOS
+// Archivos completamente independientes con sus propios metadatos
+router.post(
   "/upload/multiple/distinct",
   handleMultipleFiles('files'),
   validateSchema(createDistinctFilesSchema, 'body', 'distinct'),
@@ -57,7 +68,6 @@ router.post(
   applyRouteRule,
   uploadMultipleDistinctFiles
 );
- */
 // Endpoint para actualizar MÚLTIPLES archivos
 /* router.put(
   "/update/multiple",

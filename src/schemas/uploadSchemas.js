@@ -118,7 +118,7 @@ export const createSingleFileSchema = Joi.object({
 });
 
 // ============================================
-// Subir multiples archivos
+// Subir multiples archivos que son iguales
 // ============================================
 export const createVariantsSchema = Joi.object({
   ...baseFileSchema,

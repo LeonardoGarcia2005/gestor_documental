@@ -1,42 +1,42 @@
-import { routeRuleDAO } from "../dataAccessObjects/routeRuleDAO.js";
 import { channelDAO } from "../dataAccessObjects/channelDAO.js";
 import { documentTypeDAO } from "../dataAccessObjects/documentTypeDAO.js";
-import { getParameterValue } from "../lib/routeParameterMappings.js";
 import { securityLevelDAO } from "../dataAccessObjects/securityLevelDAO.js";
+import { pathTemplateService } from "../services/pathTemplateService.js";
+import { loggerGlobal } from "../logging/loggerManager.js";
 
 export const applyRouteRule = async (req, res, next) => {
   try {
+    const { securityContext, isForVariants } = req;
     const rawValues = req.body;
-    const { securityContext, isForMultiFile, isDistinctFiles } = req;
-    const httpMethod = req.method;
 
+    // Validar contexto de seguridad
     if (!securityContext) {
       return res.status(500).json({
         error: "Contexto de seguridad no establecido",
       });
     }
 
-    // Validamos que si tiene empresa en true y si es publico le colocamos el valor static
+    // Si tiene empresa y es público, colocar storage = "static"
     if (rawValues.hasCompany && securityContext.securityLevel === "public") {
       rawValues.storage = "static";
     }
 
-    // Valores base compartidos
-    const baseValues = {
+    // Construir contexto base para la construcción de rutas
+    const baseContext = {
       ...rawValues,
-      isForMultiFile,
-      ...(securityContext.companyCode
-        ? { companyCode: securityContext.companyCode }
-        : {}),
+      securityLevel: securityContext.securityLevel,
+      hasCompany: rawValues.hasCompany,
+      isForVariants: isForVariants || false,
+      basePath: "/mnt/gestor_documental_test", // Valor por defecto
+      ...(securityContext.companyCode && { companyCode: securityContext.companyCode }),
     };
 
-    // Realizar las consultas comunes una sola vez
-    const [channelExists, documentTypeExists, securityLevel] =
-      await Promise.all([
-        channelDAO.existsChannel(baseValues.channel),
-        documentTypeDAO.existDocumentType(baseValues.documentType),
-        securityLevelDAO.getSecurityByType(baseValues.securityLevel),
-      ]);
+    // Validar canal y tipo de documento en paralelo
+    const [channelExists, documentTypeExists, securityLevel] = await Promise.all([
+      channelDAO.existsChannel(baseContext.channel),
+      documentTypeDAO.existDocumentType(baseContext.documentType),
+      securityLevelDAO.getSecurityByType(baseContext.securityLevel),
+    ]);
 
     if (!channelExists.exists) {
       return res.status(404).json({
@@ -50,139 +50,69 @@ export const applyRouteRule = async (req, res, next) => {
       });
     }
 
-    // Distinct files procesa cada archivo individualmente
-    if (isDistinctFiles) {
-      const originalProcessed = Array.isArray(req.processedFiles)
-        ? req.processedFiles
-        : [];
+    // Procesar según si es archivo único o múltiples archivos
+    const hasMultipleFiles = req.files && req.files.length > 0;
+
+    if (hasMultipleFiles) {
+      // Múltiples archivos (variantes o distintos)
+      const processedFiles = Array.isArray(req.processedFiles) ? req.processedFiles : [];
+      const filesData = req.body.filesData || [];
 
       const enrichedFiles = [];
 
-      // Procesar cada archivo con su propia regla de ruta
-      for (let i = 0; i < req.body.filesData.length; i++) {
-        const fileData = req.body.filesData[i];
-        const original = originalProcessed[i] || {};
+      for (let i = 0; i < filesData.length; i++) {
+        const fileData = filesData[i];
+        const originalFileInfo = processedFiles[i] || {};
 
-        // Valores específicos para este archivo (cada uno puede tener deviceType diferente)
-        const fileSpecificValues = {
-          ...baseValues,
-          fileIndex: i,
-          deviceType: fileData.deviceType,
-          ...(original.resolution ? { resolution: original.resolution } : {}),
+        // Contexto específico para este archivo
+        const fileContext = {
+          ...baseContext,
+          deviceType: fileData.deviceType || originalFileInfo.deviceType,
+          resolution: originalFileInfo.resolution,
+          typeOfFile: fileData.typeOfFile || baseContext.typeOfFile,
+          processingType: baseContext.processingType || "original",
         };
 
-        // Obtener regla de ruta específica para este archivo
-        const routeParameters = await routeRuleDAO.getRouteRuleComplete(
-          fileSpecificValues,
-          httpMethod
-        );
-
-        if (!routeParameters || routeParameters.length === 0) {
-          return res.status(500).json({
-            error: `No se encontró una regla de ruta para el archivo ${
-              i + 1
-            } (deviceType: ${fileData.deviceType})`,
-          });
-        }
-
-        // Construir ruta específica para este archivo
-        const { routePath, routeParameterValues } =
-          buildRoutePathWithParameters(routeParameters, fileSpecificValues);
+        // Construir ruta usando el nuevo servicio
+        const routeResult = await pathTemplateService.buildRouteForFile(fileContext);
 
         enrichedFiles.push({
-          ...original,
+          ...originalFileInfo,
           fileIndex: i,
-          routePath,
-          routeRuleId: routeParameters[0].route_rule_id,
+          routePath: routeResult.path,
+          templateId: routeResult.templateId,
+          templateName: routeResult.templateName,
           originalFile: fileData.file,
-          routeParameterValues,
-          ...(original.resolution
-            ? { dimensions: { resolution: original.resolution } }
-            : {}),
+          parameters: routeResult.parameters,
+          deviceType: fileContext.deviceType,
+          ...(originalFileInfo.resolution && {
+            dimensions: { resolution: originalFileInfo.resolution }
+          }),
         });
       }
-
-      // Guardar resultados enriquecidos
-      req.processedFiles = enrichedFiles;
-      req.processedFilesRoutes = enrichedFiles.map((f) => f.routePath);
-      req.routeParameterValues = enrichedFiles.map(
-        (f) => f.routeParameterValues
-      );
-    }
-    // Archivos múltiples con la MISMA ruta (mismo deviceType)
-    else if (isForMultiFile) {
-      // Obtener regla de ruta UNA SOLA VEZ (todos comparten la misma)
-      const routeParameters = await routeRuleDAO.getRouteRuleComplete(
-        baseValues,
-        httpMethod
-      );
-
-      if (!routeParameters || routeParameters.length === 0) {
-        return res.status(500).json({
-          error: `No se encontró una regla de ruta para securityLevel: ${baseValues.securityLevel}, hasCompany: ${baseValues.hasCompany}`,
-        });
-      }
-
-      const originalProcessed = Array.isArray(req.processedFiles)
-        ? req.processedFiles
-        : [];
-
-      // Aplicar la misma ruta a todos los archivos
-      const enrichedFiles = req.body.filesData.map((fileData, i) => {
-        const original = originalProcessed[i] || {};
-
-        // Crear valores específicos para cada archivo incluyendo su resolución
-        const fileSpecificValues = {
-          ...baseValues,
-          deviceType: fileData.deviceType,
-          ...(original.resolution ? { resolution: original.resolution } : {}),
-        };
-
-        // Construir ruta para este archivo con su resolución específica
-        const { routePath, routeParameterValues } =
-          buildRoutePathWithParameters(routeParameters, fileSpecificValues);
-
-        return {
-          ...original,
-          fileIndex: i,
-          deviceType: fileData.deviceType,
-          routePath,
-          routeRuleId: routeParameters[0].route_rule_id,
-          originalFile: fileData.file,
-          routeParameterValues,
-          ...(original.resolution
-            ? { dimensions: { resolution: original.resolution } }
-            : {}),
-        };
-      });
 
       req.processedFiles = enrichedFiles;
       req.processedFilesRoutes = enrichedFiles.map((f) => f.routePath);
-      req.routeParameterValues = enrichedFiles.map(
-        (f) => f.routeParameterValues
-      );
-    }
-    // Archivo único
-    else {
-      const routeParameters = await routeRuleDAO.getRouteRuleComplete(
-        baseValues,
-        httpMethod
-      );
 
-      if (!routeParameters || routeParameters.length === 0) {
-        return res.status(500).json({
-          error: `No se encontró una regla de ruta para securityLevel: ${baseValues.securityLevel}, hasCompany: ${baseValues.hasCompany}`,
-        });
-      }
-
-      const { routePath, routeParameterValues } = buildRoutePathWithParameters(
-        routeParameters,
-        baseValues
+      loggerGlobal.info(
+        `Procesados ${enrichedFiles.length} archivos ${isForVariants ? "(variantes)" : "(distintos)"}`
       );
+    } else {
+      // Archivo único
+      const fileContext = {
+        ...baseContext,
+        processingType: baseContext.processingType || "original",
+        typeOfFile: baseContext.typeOfFile,
+      };
 
-      req.routePath = routePath;
-      req.routeRuleId = routeParameters[0].route_rule_id;
-      req.routeParameterValues = routeParameterValues;
+      const routeResult = await pathTemplateService.buildRouteForFile(fileContext);
+
+      req.routePath = routeResult.path;
+      req.templateId = routeResult.templateId;
+      req.templateName = routeResult.templateName;
+      req.routeParameters = routeResult.parameters;
+
+      loggerGlobal.info(`Ruta construida para archivo único: ${routeResult.path}`);
     }
 
     // Datos comunes para todos los casos
@@ -192,6 +122,7 @@ export const applyRouteRule = async (req, res, next) => {
 
     next();
   } catch (error) {
+    loggerGlobal.error("Error al procesar las reglas de ruta", error);
     return res.status(500).json({
       error: "Error al procesar las reglas de ruta",
       details: error.message,
@@ -199,75 +130,3 @@ export const applyRouteRule = async (req, res, next) => {
   }
 };
 
-export const buildRoutePathWithParameters = (
-  routeParameters,
-  values,
-  options = {}
-) => {
-  const { allowOverrideDefaults = false } = options;
-
-  const separator = routeParameters[0].separator_char || "/";
-  const routeParts = [];
-  const dynamicValues = {};
-  const routeParameterValues = [];
-
-  const sortedParameters = routeParameters.sort(
-    (a, b) => a.position_order - b.position_order
-  );
-
-  // Pre-calcular TODOS los valores dinámicos (incluso si hay default)
-  for (const param of sortedParameters) {
-    dynamicValues[param.parameter_key] = getParameterValue(
-      param.parameter_key,
-      values
-    );
-  }
-
-  // Construir partes de la ruta
-  for (const param of sortedParameters) {
-    let paramValue = null;
-
-    // PRIORIDAD:
-    // 1. Valor explícito pasado en values (si allowOverrideDefaults = true)
-    // 2. Valor por defecto del parámetro
-    // 3. null
-
-    if (allowOverrideDefaults && dynamicValues[param.parameter_key]) {
-      // Usar valor pasado explícitamente (tiene prioridad)
-      paramValue = dynamicValues[param.parameter_key];
-    } else if (param.default_value !== null && param.default_value !== "") {
-      // Usar valor por defecto
-      paramValue = param.default_value;
-    } else {
-      // Último recurso: valor dinámico calculado
-      paramValue = dynamicValues[param.parameter_key];
-    }
-
-    if (param.is_required && !paramValue) {
-      throw new Error(
-        `El parámetro requerido '${param.name}' (${
-          param.parameter_key
-        }) no tiene valor ${
-          values.fileIndex !== undefined
-            ? `para el archivo con índice ${values.fileIndex}`
-            : ""
-        }`
-      );
-    }
-
-    if (paramValue) {
-      routeParts.push(paramValue);
-    }
-
-    routeParameterValues.push({
-      route_parameter_id: parseInt(param.route_parameter_id),
-      position_order: param.position_order,
-      value: paramValue || "",
-    });
-  }
-
-  return {
-    routePath: routeParts.join(separator),
-    routeParameterValues,
-  };
-};

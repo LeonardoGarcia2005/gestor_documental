@@ -57,21 +57,21 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                     channelId,
                     documentTypeId,
                     securityLevelId,
-                    routeRuleId: fileEntry.routeRuleId,
+                    templateId: fileEntry.templateId, // Ahora usa templateId del nuevo sistema
                     emissionDate: defaultEmissionDate,
                     expirationDate: defaultExpirationDate,
                     routePath: fileEntry.routePath,
                 },
                 deviceType: fileEntry.deviceType || null,
                 resolution: fileEntry.resolution || fileEntry.dimensions?.resolution || null,
-                routeParameterValues: fileEntry.routeParameterValues || [],
+                parameters: fileEntry.parameters || {}, // Parámetros del template
             };
         });
 
-        const routeRuleIds = [...new Set(preparedFiles.map(f => f.config.routeRuleId))];
+        const templateIds = [...new Set(preparedFiles.map(f => f.config.templateId))];
         const md5Hashes = preparedFiles.map(f => f.md5);
 
-        const existingFiles = await filesDAO.getFilesByMd5AndRouteRuleIds(md5Hashes, routeRuleIds);
+        const existingFiles = await filesDAO.getFilesByMd5AndRouteRuleIds(md5Hashes, templateIds);
 
         const existingFilesMap = new Map(
             existingFiles.map(file => {
@@ -84,7 +84,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
         const duplicateFiles = [];
 
         preparedFiles.forEach(file => {
-            const key = `${file.md5}_${file.config.routeRuleId}`;
+            const key = `${file.md5}_${file.config.templateId}`;
             const existingFile = existingFilesMap.get(key);
 
             if (existingFile) {
@@ -117,6 +117,28 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
         if (newFiles.length > 0) {
             const hasVariants = newFiles.length > 1;
 
+            // Detectar cual es la imagen más grande (será la original)
+            let mainFileIndex = 0;
+            let maxResolution = 0;
+
+            newFiles.forEach((file, idx) => {
+                const resolution = file.resolution;
+                if (resolution) {
+                    // resolution viene como "1920x1080", calculamos el área
+                    const [width, height] = resolution.split('x').map(Number);
+                    const area = width * height;
+
+                    if (area > maxResolution) {
+                        maxResolution = area;
+                        mainFileIndex = idx;
+                    }
+                }
+            });
+
+            loggerGlobal.info(
+                `Imagen original detectada: índice ${mainFileIndex} con resolución ${newFiles[mainFileIndex].resolution || 'desconocida'}`
+            );
+
             const filesWithMetadata = newFiles.map((file, idx) => {
                 const codeFile = generateCodeFile();
                 const ext = path.extname(file.cleanName);
@@ -131,8 +153,8 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                     fileNameWithCode,
                     fullStoragePath,
                     fileUrl,
-                    isMain: idx === 0,
-                    hasVariants: idx === 0 ? hasVariants : false,
+                    isMain: idx === mainFileIndex,
+                    hasVariants: idx === mainFileIndex ? hasVariants : false,
                 };
             });
 
@@ -162,7 +184,10 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
             loggerGlobal.info('Iniciando transacción de base de datos...');
 
             await dbConnectionProvider.tx(async (t) => {
-                const mainFileData = filesWithMetadata[0];
+                // Encontrar el archivo principal (el que tiene isMain = true)
+                const mainFileData = filesWithMetadata.find(f => f.isMain) || filesWithMetadata[0];
+
+                loggerGlobal.info(`Guardando archivo principal: ${mainFileData.fileNameWithCode}`);
 
                 // Insertar archivo principal
                 const mainFileInserted = await filesDAO.insertFile(
@@ -173,7 +198,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                     mainFileData.extensionId,
                     mainFileData.codeFile,
                     false,
-                    mainFileData.config.routeRuleId,
+                    mainFileData.config.templateId, // Usar templateId del nuevo sistema
                     mainFileData.fileNameWithCode,
                     mainFileData.config.emissionDate,
                     mainFileData.config.expirationDate,
@@ -187,15 +212,9 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                 mainFileData.dbResult = mainFileInserted;
                 mainFileData.mainFileId = mainFileInserted.id;
 
-                // Insertar parámetros del archivo principal
-                if (mainFileData.routeParameterValues?.length > 0) {
-                    await fileParameterValueDAO.insertFileParameterValue(
-                        mainFileInserted.id,
-                        mainFileData.config.routeRuleId,
-                        mainFileData.routeParameterValues,
-                        t
-                    );
-                }
+                // Los parámetros ahora vienen del template (no se insertan en file_parameter_value)
+                // El nuevo sistema almacena los parámetros en la ruta, no en tabla separada
+                loggerGlobal.debug(`Parámetros del template: ${JSON.stringify(mainFileData.parameters)}`);
 
                 // Insertar la variante principal (se referencia a sí mismo)
                 await filesDAO.insertFileVariant(
@@ -209,7 +228,12 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
 
                 // Si hay más archivos, son variantes del principal
                 if (filesWithMetadata.length > 1) {
-                    const variantInsertPromises = filesWithMetadata.slice(1).map(async (variantFile) => {
+                    // Filtrar solo las variantes (excluir el archivo principal)
+                    const variantFiles = filesWithMetadata.filter(f => !f.isMain);
+
+                    loggerGlobal.info(`Guardando ${variantFiles.length} variantes`);
+
+                    const variantInsertPromises = variantFiles.map(async (variantFile) => {
                         // Insertar archivo variante
                         const variantInserted = await filesDAO.insertFile(
                             securityContext.companyId ?? null,
@@ -219,7 +243,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                             variantFile.extensionId,
                             variantFile.codeFile,
                             false,
-                            variantFile.config.routeRuleId,
+                            variantFile.config.templateId, // Usar templateId del nuevo sistema
                             variantFile.fileNameWithCode,
                             variantFile.config.emissionDate,
                             variantFile.config.expirationDate,
@@ -232,15 +256,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
 
                         variantFile.dbResult = variantInserted;
 
-                        // Insertar parámetros de la variante
-                        if (variantFile.routeParameterValues?.length > 0) {
-                            await fileParameterValueDAO.insertFileParameterValue(
-                                variantInserted.id,
-                                variantFile.config.routeRuleId,
-                                variantFile.routeParameterValues,
-                                t
-                            );
-                        }
+                        loggerGlobal.debug(`Variante guardada: ${variantFile.fileNameWithCode} (${variantFile.resolution})`);
 
                         // Vincular variante con el archivo principal
                         await filesDAO.insertFileVariant(
@@ -354,8 +370,8 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
 
             // Cada archivo puede tener sus propias fechas
             const fileMetadata = req.body.filesMetadata?.[index] || {};
-            const emissionDate = normalizeDate(fileMetadata.emissionDate);
-            const expirationDate = normalizeDate(fileMetadata.expirationDate, 1);
+            const emissionDate = normalizeDate(fileMetadata.emissionDate || req.body.emissionDate);
+            const expirationDate = normalizeDate(fileMetadata.expirationDate || req.body.expirationDate, 1);
 
             return {
                 index,
@@ -369,19 +385,19 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                     channelId,
                     documentTypeId,
                     securityLevelId,
-                    routeRuleId: fileEntry.routeRuleId,
+                    templateId: fileEntry.templateId, // Usar templateId del nuevo sistema
                     emissionDate,
                     expirationDate,
                     routePath: fileEntry.routePath,
                 },
-                routeParameterValues: fileEntry.routeParameterValues || [],
+                parameters: fileEntry.parameters || {},
             };
         });
 
-        const routeRuleIds = [...new Set(preparedFiles.map(f => f.config.routeRuleId))];
+        const templateIds = [...new Set(preparedFiles.map(f => f.config.templateId))];
         const md5Hashes = preparedFiles.map(f => f.md5);
 
-        const existingFiles = await filesDAO.getFilesByMd5AndRouteRuleIds(md5Hashes, routeRuleIds);
+        const existingFiles = await filesDAO.getFilesByMd5AndRouteRuleIds(md5Hashes, templateIds);
 
         const existingFilesMap = {};
         for (const file of existingFiles) {
@@ -393,7 +409,7 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
         const duplicateFiles = [];
 
         for (const file of preparedFiles) {
-            const key = `${file.md5}_${file.config.routeRuleId}`;
+            const key = `${file.md5}_${file.config.templateId}`;
             const existingFile = existingFilesMap[key];
 
             if (existingFile) {
@@ -477,7 +493,7 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                         file.extensionId,
                         file.codeFile,
                         false, // is_used
-                        file.config.routeRuleId,
+                        file.config.templateId, // Usar templateId del nuevo sistema
                         file.fileNameWithCode,
                         file.config.emissionDate,
                         file.config.expirationDate,
@@ -490,16 +506,7 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
 
                     file.dbResult = fileInserted;
 
-                    // Insertar parámetros dinámicos
-                    if (file.routeParameterValues?.length > 0) {
-                        loggerGlobal.debug(`Insertando ${file.routeParameterValues.length} parámetros`);
-                        await fileParameterValueDAO.insertFileParameterValue(
-                            fileInserted.id,
-                            file.config.routeRuleId,
-                            file.routeParameterValues,
-                            t
-                        );
-                    }
+                    loggerGlobal.debug(`Archivo distinto guardado: ${file.fileNameWithCode}`);
                 }
 
                 transactionCommitted = true;

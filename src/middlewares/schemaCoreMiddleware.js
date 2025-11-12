@@ -31,7 +31,7 @@ export const validateSchema = (schema, source = "body", fileMode = null) => {
               errors: [{ field: "file", message: "Se requiere un archivo" }],
             });
           }
-        } 
+        }
         else if (fileMode === 'variants') {
           // Múltiples archivos con el MISMO contexto (variantes)
           if (!req.files || req.files.length === 0) {
