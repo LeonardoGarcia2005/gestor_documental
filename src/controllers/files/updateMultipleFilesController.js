@@ -57,10 +57,10 @@ export const updateMultipleFiles = async (req, res) => {
         );
       }
 
-      const fileName = sanitizeFileName(f.file.originalname, "50");
+      const oldCode = f.code;
+      const fileName = sanitizeFileName(f.file.originalname, "50", f.code);
       const fileSize = f.file.size;
       const md5 = calculateMD5(f.file.buffer);
-      const oldCode = f.code;
 
       const oldFile = await filesDAO.getFileByCode(oldCode);
       if (!oldFile) {

@@ -25,7 +25,7 @@ export const normalizeCompanyName = (companyName) => {
 };
 
 // Sanitizar nombre
-export const sanitizeFileName = (filename, maxFilenameLength) => {
+export const sanitizeFileName = (filename, maxFilenameLength, code = null) => {
   const ext = path.extname(filename);
   const name = path.basename(filename, ext);
 
@@ -39,7 +39,7 @@ export const sanitizeFileName = (filename, maxFilenameLength) => {
   const finalName = sanitizedName || `archivo_${Date.now()}`;
   const truncatedName = finalName.substring(0, maxFilenameLength);
 
-  return `${truncatedName}${ext.toLowerCase()}`;
+  return code != null ? `${truncatedName}-${code}${ext.toLowerCase()}` : `${truncatedName}${ext.toLowerCase()}`;
 };
 
 export const normalizeDate = (date, fallbackYears = 0) => {
