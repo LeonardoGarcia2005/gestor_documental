@@ -64,6 +64,17 @@ export const formatDate = (date) => {
   return new Date(date).toISOString().split("T")[0]; 
 };
 
+export const formatNameByCode = (fileName, code) => {
+  const lastDotIndex = fileName.lastIndexOf('.');
+  const fileNameWithoutExt = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
+  const fileExtension = lastDotIndex !== -1 ? fileName.substring(lastDotIndex + 1) : '';
+  const newFileName = fileExtension
+    ? `${fileNameWithoutExt}-${code}.${fileExtension}`
+    : `${fileNameWithoutExt}-${code}`;
+
+  return newFileName;
+};
+
 // Corrige rutas /mnt/... cuando se ejecuta en Windows
 const fixWindowsPath = (p) => {
   if (os.platform() === "win32" && p.startsWith("/mnt/")) {

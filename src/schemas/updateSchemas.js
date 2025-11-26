@@ -1,6 +1,7 @@
 
 import Joi from 'joi'
 import { secureFileValidator } from '../lib/secureFileValidator.js'
+import { configurationProvider } from '../config/configurationManager.js'
 
 // Esquema para actualizar multiples archivos
 export const updateMultipleFilesSchema = Joi.object({
@@ -12,11 +13,12 @@ export const updateMultipleFilesSchema = Joi.object({
       })
     )
     .min(1)
-    .max(parseInt(process.env.MAX_FILES_COUNT || "10"))
+    .max(configurationProvider.uploads.maxFilesCount)
     .required()
     .messages({
       "array.min": "Debe enviar al menos 1 archivo",
-      "array.max": `No puede enviar más de ${process.env.MAX_FILES_COUNT || "10"
+      "array.max": `No puede enviar más de ${
+        configurationProvider.uploads.maxFilesCount
         } archivos`,
       "any.required": "El array de archivos es requerido",
     }),

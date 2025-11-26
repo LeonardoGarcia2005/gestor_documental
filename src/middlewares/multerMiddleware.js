@@ -1,19 +1,17 @@
 import multer from "multer";
 import { loggerGlobal } from "../logging/loggerManager.js";
-import dotenv from "dotenv";
 import { sanitizeFileName } from "../lib/formatters.js";
-
-dotenv.config();
+import { configurationProvider } from "../config/configurationManager.js";
 
 // Configuración de Multer para almacenar en memoria
 const storage = multer.memoryStorage();
 
-// Configuración por env
+// Configuración desde configurationProvider (development.json o production.json)
 const fileConfig = {
-  maxFileSize: parseInt(process.env.MAX_FILE_SIZE_MB || "10") * 1024 * 1024,
-  maxFiles: parseInt(process.env.MAX_FILES_COUNT || "10"),
-  maxFilenameLength: parseInt(process.env.MAX_FILENAME_LENGTH || "50"),
-  maxFieldSize: parseInt(process.env.MAX_FIELD_SIZE_KB || "1024") * 1024,
+  maxFileSize: configurationProvider.uploads.maxFileSize,
+  maxFiles: configurationProvider.uploads.maxFilesCount,
+  maxFilenameLength: configurationProvider.uploads.maxFilenameLength,
+  maxFieldSize: configurationProvider.uploads.maxFieldSizeKB * 1024,
 };
 
 // Handlers específicos para single y multiple

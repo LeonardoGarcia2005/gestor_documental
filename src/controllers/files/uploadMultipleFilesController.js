@@ -11,6 +11,7 @@ import { saveMultipleFilesFromBuffer } from "../../services/fileSystem.js";
 import { generateCodeFile } from "../../lib/generators.js";
 import { loggerGlobal } from "../../logging/loggerManager.js";
 import { formatDate } from "../../lib/formatters.js";
+import { configurationProvider } from "../../config/configurationManager.js";
 
 export const uploadMultipleVariantsFiles = async (req, res) => {
     let createdFiles = [];
@@ -29,7 +30,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
         }
 
         const publicLevel = securityLevels.find((level) =>
-            level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
+            level.toLowerCase().includes(configurationProvider.uploads.securityPublicLevel)
         );
 
         const defaultEmissionDate = normalizeDate(emissionDate);
@@ -67,17 +68,6 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
             };
         });
 
-        // ========================================================================
-        // VALIDACIÓN DE ARCHIVOS DUPLICADOS (ACTUALMENTE DESHABILITADA)
-        // ========================================================================
-        // Esta sección verifica si los archivos ya existen en la base de datos
-        // comparando MD5 hash + routeRuleId para evitar duplicados.
-        // 
-        // ESTADO ACTUAL: Comentado - todos los archivos se subirán sin validación
-        // USO FUTURO: Descomentar cuando se requiera detección de duplicados
-        // ========================================================================
-
-        /*
         const routeRuleIds = [...new Set(preparedFiles.map(f => f.config.routeRuleId))];
         const md5Hashes = preparedFiles.map(f => f.md5);
 
@@ -121,14 +111,6 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                 newFiles.push(file);
             }
         });
-        */
-
-        // ========================================================================
-        // MODO ACTUAL: Todos los archivos se procesan como nuevos
-        // ========================================================================
-        const newFiles = preparedFiles;
-        const duplicateFiles = [];
-        // ========================================================================
 
         const uploadedFiles = [];
 
@@ -157,7 +139,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
             // ⚠️ CRÍTICO: Guardar archivos físicos PRIMERO
             // Si esto falla, no se hace nada en la BD
             loggerGlobal.info(`Guardando ${filesWithMetadata.length} archivos físicos...`);
-            
+
             try {
                 const filesToSave = filesWithMetadata.map(file => ({
                     filePath: file.fullStoragePath,
@@ -178,7 +160,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
 
             // Solo si los archivos físicos se guardaron correctamente, proceder con la BD
             loggerGlobal.info('Iniciando transacción de base de datos...');
-            
+
             await dbConnectionProvider.tx(async (t) => {
                 const mainFileData = filesWithMetadata[0];
 
@@ -198,6 +180,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                     mainFileData.hasVariants,
                     mainFileData.sizeBytes,
                     mainFileData.md5,
+                    null,
                     t
                 );
 
@@ -220,7 +203,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                     mainFileInserted.id,
                     mainFileData.resolution,
                     mainFileData.deviceType,
-                    true, // is_main
+                    true,
                     t
                 );
 
@@ -243,6 +226,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                             false, // has_variants (las variantes no tienen sub-variantes)
                             variantFile.sizeBytes,
                             variantFile.md5,
+                            null,
                             t
                         );
 
@@ -264,7 +248,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
                             variantInserted.id,  // variant_file_id
                             variantFile.resolution,
                             variantFile.deviceType,
-                            false, // is_main
+                            false,
                             t
                         );
 
@@ -313,7 +297,7 @@ export const uploadMultipleVariantsFiles = async (req, res) => {
         };
 
         return res.status(201).json(responseData);
-        
+
     } catch (error) {
         loggerGlobal.error("Error en uploadMultipleFiles:", error);
         loggerGlobal.error("Stack trace:", error.stack);
@@ -356,7 +340,7 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
         }
 
         const publicLevel = securityLevels.find((level) =>
-            level.toLowerCase().includes(process.env.SECURITY_PUBLIC_LEVEL)
+            level.toLowerCase().includes(configurationProvider.uploads.securityPublicLevel)
         );
 
         const preparedFiles = files.map((fileEntry, index) => {
@@ -394,17 +378,6 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
             };
         });
 
-        // ========================================================================
-        // VALIDACIÓN DE ARCHIVOS DUPLICADOS (ACTUALMENTE DESHABILITADA)
-        // ========================================================================
-        // Esta sección verifica si los archivos ya existen en la base de datos
-        // comparando MD5 hash + routeRuleId para evitar duplicados en batch.
-        // 
-        // ESTADO ACTUAL: Comentado - todos los archivos se subirán sin validación
-        // USO FUTURO: Descomentar cuando se requiera detección de duplicados
-        // ========================================================================
-
-        /*
         const routeRuleIds = [...new Set(preparedFiles.map(f => f.config.routeRuleId))];
         const md5Hashes = preparedFiles.map(f => f.md5);
 
@@ -446,14 +419,6 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                 newFiles.push(file);
             }
         }
-        */
-
-        // ========================================================================
-        // MODO ACTUAL: Todos los archivos se procesan como nuevos
-        // ========================================================================
-        const newFiles = preparedFiles;
-        const duplicateFiles = [];
-        // ========================================================================
 
         const uploadedFiles = [];
 
@@ -478,7 +443,7 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
             // ⚠️ CRÍTICO: Guardar archivos físicos PRIMERO
             // Si esto falla, no se hace nada en la BD
             loggerGlobal.info(`Guardando ${filesWithMetadata.length} archivos físicos en batch...`);
-            
+
             try {
                 const filesToSave = filesWithMetadata.map(file => ({
                     filePath: file.fullStoragePath,
@@ -519,6 +484,7 @@ export const uploadMultipleDistinctFiles = async (req, res) => {
                         false, // has_variants (batch no tiene variantes)
                         file.sizeBytes,
                         file.md5,
+                        null,
                         t
                     );
 

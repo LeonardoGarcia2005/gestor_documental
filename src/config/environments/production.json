@@ -1,0 +1,43 @@
+{
+  "services": {
+    "host": "localhost",
+    "port": 6080
+  },
+  "db": {
+    "host": "200.40.68.122",
+    "port": 5432,
+    "name": "gestor_documental_prod",
+    "user": "postgres"
+  },
+  "pgPromise": {
+    "ssl": true,
+    "max": 10,
+    "idleTimeoutMillis": 30000,
+    "connectionTimeoutMillis": 6000,
+    "maxUses": 7500
+  },
+  "maxLogLevel": "info",
+  "uploads": {
+    "maxFileSize": 20971520,
+    "maxFilesCount": 30,
+    "maxFilenameLength": 50,
+    "maxFieldSizeKB": 1024,
+    "pathPublicNginx": "/mnt/gestor_documental/publico/",
+    "securityPublicLevel": "public"
+  },
+  "files": {
+    "expirationDays": 3,
+    "batchSize": 20,
+    "batchDelayMinutes": 10
+  },
+  "nginx": {
+    "publicLocation": "/gestor-documental"
+  },
+  "api": {
+    "prefix": "/gestor/api"
+  },
+  "backup": {
+    "pathPublic": "/mnt/db_files/respaldo_gestor_documental_prod/public/",
+    "pathPrivate": "/mnt/db_files/respaldo_gestor_documental_prod/private/"
+  }
+}

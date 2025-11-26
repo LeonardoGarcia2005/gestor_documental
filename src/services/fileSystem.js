@@ -3,7 +3,7 @@ import path from "path";
 import os from "os";
 import { loggerGlobal } from "../logging/loggerManager.js";
 import { normalizePath } from "../lib/formatters.js";
-import { TOKEN_FILE_PATH } from "./tokenManager.js";
+import { fileParameterValueDAO } from "../dataAccessObjects/fileParameterValueDAO.js";
 
 const isUnixSystem = ["linux", "darwin"].includes(os.platform());
 
@@ -29,7 +29,7 @@ export const replaceFileFromBuffer = async (filePath, buffer, newFileName) => {
   try {
     // Verificar si el archivo existe
     const fileExists = await checkFileExists(filePath);
-    
+
     if (fileExists) {
       // Eliminar el archivo existente
       await fs.unlink(filePath);
@@ -107,8 +107,7 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
         await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
       }
       throw new Error(
-        `No se pudieron guardar ${failedFiles.length} archivo(s): ${
-          failedFiles.map(f => `${f.originalName} (${f.error})`).join(', ')
+        `No se pudieron guardar ${failedFiles.length} archivo(s): ${failedFiles.map(f => `${f.originalName} (${f.error})`).join(', ')
         }`
       );
     }
@@ -118,45 +117,6 @@ export const saveMultipleFilesFromBuffer = async (fileData) => {
     loggerGlobal.error("Error general guardando múltiples archivos:", error);
     if (savedFiles.length > 0) {
       await rollbackSavedFiles(savedFiles.map((f) => f.filePath));
-    }
-    throw error;
-  }
-};
-
-// Verifica si existe un archivo temporal para un código específico
-export const findExistingTempFile = async (tempDirectory, fileCode) => {
-  try {
-    // Verifica que el directorio exista
-    await fs.access(tempDirectory);
-
-    // Leer tokens guardados
-    const data = await fs.readFile(TOKEN_FILE_PATH, "utf8");
-    const lines = data.trim().split("\n");
-
-    // Buscar línea con el fileCode
-    const line = lines.find((line) => line.split("|")[1] === fileCode);
-    if (!line) {
-      loggerGlobal.debug(`No se encontró token previo para ${fileCode}`);
-      return null;
-    }
-
-    const [shortId] = line.split("|");
-
-    // Buscar si existe un archivo que empiece con ese shortId
-    const files = await fs.readdir(tempDirectory);
-    const foundFile = files.find((f) => f.startsWith(`${shortId}&`));
-
-    if (foundFile) {
-      const foundPath = `${normalizePath(tempDirectory)}/${foundFile}`;
-      loggerGlobal.info(`Archivo temporal reutilizado para código ${fileCode}: ${foundPath}`);
-      return foundPath;
-    }
-
-    return null;
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      loggerGlobal.debug(`Directorio temporal no existe: ${tempDirectory}`);
-      return null;
     }
     throw error;
   }
@@ -208,4 +168,32 @@ export const checkFileExists = async (filePath) => {
   } catch {
     return false;
   }
+};
+
+export const deletePhysicalFiles = async (files) => {
+  const results = {
+    success: [],
+    failed: [],
+    notFound: []
+  };
+
+  const deletePromises = files.map(async (file) => {
+    const filePath = await fileParameterValueDAO.buildFilePathFromCode(file.code);
+    try {
+      await fs.access(filePath); // solo sigue si existe
+      await fs.unlink(filePath);
+      results.success.push({ code: file.code, path: filePath });
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        results.notFound.push({ code: file.code, path: filePath });
+      } else {
+        results.failed.push({ code: file.code, error: error.message });
+      }
+    }
+  });
+
+  // Ejecuta todas las promesas en paralelo y se lanzan al mismo tiempo, ya que si usaramos un job tendriamos problemas de que debe esperar siempre una tras otra
+  await Promise.all(deletePromises);
+
+  return results;
 };

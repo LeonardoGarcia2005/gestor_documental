@@ -7,14 +7,30 @@ const getFileByCode = async (codeFile) => {
       SELECT 
         f.id,
         f.code,
-        f.file_name,
-        f.route_rule_id,
+        f.file_name AS "fileName",
+        f.route_rule_id AS "routeRuleId",
         sl.type AS "securityLevel",
-        dt.name AS "documentType"
+        dt.name AS "documentType",
+        f.reference_count AS "referenceCount",
+        f.is_used AS "isUsed",
+        f.is_shared AS "isShared",
+        f.company_id AS "companyId",
+        f.document_type_id AS "documentTypeId",
+        f.channel_id AS "channelId",
+        f.security_level_id AS "securityLevelId",
+        f.extension_id AS "extensionId",
+        f.document_emission_date AS "documentEmissionDate",
+        f.document_expiration_date AS "documentExpirationDate",
+        f.has_variants AS "hasVariants",
+        f.size_bytes AS "sizeBytes",
+        f.file_hash_md5 AS "fileHashMd5",
+        f.creation_date AS "creationDate"
       FROM file AS f
       JOIN security_level sl ON f.security_level_id = sl.id
       JOIN document_type dt ON f.document_type_id = dt.id
-      WHERE f.code = $1
+      WHERE f.code = $1 
+        AND f.status = TRUE 
+        AND is_backup = FALSE
     `;
 
     const values = [codeFile];
@@ -44,7 +60,7 @@ const getFilesByCodes = async (codes) => {
     const placeholders = codes.map((_, index) => `$${index + 1}`).join(',');
 
     const queryFiles = `
-      SELECT 
+      SELECT
         f.id,
         f.code,
         f.file_name,
@@ -53,7 +69,9 @@ const getFilesByCodes = async (codes) => {
         sl.type AS "securityLevel"
       FROM file AS f
       JOIN security_level sl ON f.security_level_id = sl.id
-      WHERE f.code IN (${placeholders})
+      WHERE f.code IN (${placeholders}) 
+        AND f.status = TRUE 
+        AND is_backup = FALSE
     `;
 
     const result = await dbConnectionProvider.getAll(
@@ -93,7 +111,7 @@ const getFileByMd5AndRouteRuleId = async (md5, routeRuleId) => {
     const values = [routeRuleId, md5];
 
     // Ejecución de la consulta
-    const resultFile = await dbConnectionProvider.getAll(
+    const resultFile = await dbConnectionProvider.firstOrDefault(
       queryFile,
       values
     );
@@ -140,31 +158,62 @@ const getFilesByMd5AndRouteRuleIds = async (md5Hashes, routeRuleIds) => {
 
 const getUnusedFiles = async () => {
   try {
-    // Calculamos la fecha límite (3 días atrás)
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - Number(process.env.FILE_EXPIRATION_DAYS));
-
-    // Formatear la fecha para PostgreSQL (formato ISO)
-    const formatteddate = threeDaysAgo.toISOString();
+    // Calculamos la fecha límite: 10 minutos atrás
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000); // 10 minutos en ms
 
     const query = `
-      SELECT fi.id, fi.code, fi.url, slv.type, fi.creation_date
+      SELECT 
+        fi.id, 
+        fi.code, 
+        slv.type, 
+        fi.creation_date
       FROM "file" as fi
       JOIN security_level as slv ON fi.security_level_id = slv.id
       WHERE fi.status = TRUE 
-        AND fi.is_active = FALSE 
-        AND fi.creation_date < '${formatteddate}';
+        AND fi.is_used = FALSE
+        AND fi.is_queued = FALSE
+        AND fi.creation_date > $1
     `;
 
-    // Pasar la fecha como parámetro para evitar inyección SQL
-    const files = await dbConnectionProvider.getAll(query, [formatteddate]);
-    let filescodigos = files
-      .map((b) => b.code)
+    const files = await dbConnectionProvider.getAll(query, [tenMinutesAgo]);
+
+    const filesCodigos = files
+      .map((file) => file.code)
       .filter(Boolean);
-    console.log(JSON.stringify(filescodigos))
-    return files === null ? [] : files;
+
+    return files || [];
   } catch (error) {
     loggerGlobal.error("Error en getUnusedFiles:", error.message);
+    throw new Error(
+      "Error al obtener los archivos sin usar. Por favor, intente de nuevo."
+    );
+  }
+};
+
+const getFilesExpired = async () => {
+  try {
+    const query = `
+      SELECT fi.id, fi.code, s.type, fi.creation_date
+      FROM "file" as fi 
+      JOIN security_level as s ON fi.security_level_id = s.id 
+      WHERE
+      (
+      (fi.document_expiration_date IS NOT NULL AND fi.document_expiration_date <= CURRENT_DATE) 
+      OR
+      (fi.document_expiration_date IS NULL AND fi.creation_date + INTERVAL '1 year' <= CURRENT_DATE)
+      )
+      AND fi.is_backup = FALSE
+      AND fi.status = TRUE
+      ORDER BY 
+        COALESCE(fi.document_expiration_date, fi.creation_date + INTERVAL '1 year') ASC
+      LIMIT 50;
+    `;
+
+    const filesExpired = await dbConnectionProvider.getAll(query);
+
+    return filesExpired || [];
+  } catch (error) {
+    loggerGlobal.error("Error en getFilesExpired:", error.message);
     throw new Error(
       "Error al obtener los archivos sin usar. Por favor, intente de nuevo."
     );
@@ -186,6 +235,7 @@ const insertFile = async (
   hasVariants,
   sizeBytes,
   fileHashMd5,
+  referenceCount = null,
   t
 ) => {
   try {
@@ -205,9 +255,10 @@ const insertFile = async (
       file_hash_md5: fileHashMd5,
       document_emission_date: documentEmissionDate,
       document_expiration_date: documentExpirationDate,
-      creation_date: new Date(),
+      creation_date: 'NOW()',
       modification_date: null,
       deactivation_date: null,
+      reference_count: referenceCount == null ? 0 : referenceCount,
       status: true,
     };
 
@@ -231,7 +282,8 @@ const insertFile = async (
     }
 
     // Ejecución de la consulta de inserción
-    const result = await dbConnectionProvider.insertOne("file", values, t);
+    // Asegúrate de que insertOne maneje la transacción correctamente
+    const result = await dbConnectionProvider.insertOne("file", values, t)
 
     return result;
   } catch (error) {
@@ -274,25 +326,83 @@ const insertFileVariant = async (main_file_id, variant_file_id, resolution, devi
   }
 }
 
-const changeStatusFile = async (codeFile, isActive) => {
+// Obtener archivo con bloqueo pesimista (evita race conditions)
+const getFileByCodeForUpdate = async (codeFile, tx) => {
   try {
+    const query = `SELECT * FROM file WHERE code = $1 FOR UPDATE`;
+    const result = await dbConnectionProvider.executeQuery(query, [codeFile], tx, true);
+
+    return result[0] || null;
+  } catch (error) {
+    loggerGlobal.error("Error al obtener archivo con lock", {
+      error: error.message,
+      codeFile
+    });
+    throw error;
+  }
+};
+
+const updateFileStatusAtomic = async (fileId, isActive, tx) => {
+  try {
+    const query = `
+      UPDATE file 
+      SET 
+        reference_count = CASE 
+          WHEN $2 THEN reference_count + 1
+          ELSE GREATEST(reference_count - 1, 0)
+        END,
+        is_used = CASE 
+          WHEN $2 THEN true
+          WHEN GREATEST(reference_count - 1, 0) = 0 THEN false
+          ELSE is_used
+        END,
+        is_shared = CASE 
+          WHEN $2 AND (reference_count + 1) > 1 THEN true
+          WHEN NOT $2 AND GREATEST(reference_count - 1, 0) <= 1 THEN false
+          ELSE is_shared
+        END,
+        modification_date = NOW()
+      WHERE id = $1
+      RETURNING *
+    `;
+
+    const result = await dbConnectionProvider.executeQuery(query, [fileId, isActive], tx, true);
+    return result[0];
+  } catch (error) {
+    loggerGlobal.error("Error al actualizar estado del archivo", {
+      error: error.message,
+      fileId,
+      isActive
+    });
+    throw error;
+  }
+};
+
+const changeIsBackupFile = async (codeFile, isBackup, tx = null) => {
+  try {
+
+    const values = {
+      route_rule_id: null,
+      is_backup: isBackup,
+      modification_date: new Date(),
+    }
 
     const result = await dbConnectionProvider.updateOne(
       "file",
-      { is_used: isActive },
-      null,
+      values,
+      tx,
       { code: codeFile }
     );
 
     return result;
   } catch (error) {
-    loggerGlobal.error("Error al cambiar el estado en el archivo", {
+    loggerGlobal.error("Error al colocar el archivo como un backup", {
       error: error.message,
       stack: error.stack,
       codeFile,
-      isActive,
+      isBackup,
     });
-    throw new Error(`Error al cambiar el estado en el archivo: ${error.message}`);
+    throw new Error(`Error al colocar el archivo como un backup: ${error.message}`);
   }
 };
 
@@ -352,17 +462,132 @@ const updateFile = async ({ fileName, oldCode, fileSize, md5, extensionId }, t) 
   }
 };
 
+const changeStatusFilesAsQueued = async (fileIds, status) => {
+  if (!fileIds.length) return 0;
+
+  const query = `
+    UPDATE file
+    SET is_queued = ${status},
+        modification_date = NOW()
+    WHERE id = ANY($1::bigint[])
+  `;
+
+  await dbConnectionProvider.executeQuery(query, [fileIds]);
+};
+
+const deleteFilesUnused = async (arrayIdsToRemove, t) => {
+  try {
+    if (!arrayIdsToRemove.length) {
+      loggerGlobal.info("No hay archivos para eliminar");
+      return;
+    }
+
+    // Eliminar metadatos primero (dependencia de file)
+    const deleteMetadataQuery = `
+      DELETE FROM metadata
+      WHERE file_id IN (${arrayIdsToRemove.join(", ")});
+    `;
+    await dbConnectionProvider.executeQuery(deleteMetadataQuery, [], t, false);
+
+    // Eliminar los archivos variantes que estan asociados a un archivo
+    const deleteVariantsQuery = `
+      DELETE FROM file_variant
+      WHERE main_file_id IN (${arrayIdsToRemove.join(", ")}) OR variant_file_id IN (${arrayIdsToRemove.join(", ")});
+    `;
+    await dbConnectionProvider.executeQuery(deleteVariantsQuery, [], t, false);
+
+    // Eliminar registros de archivos
+    const deleteFilesQuery = `
+      DELETE FROM file
+      WHERE id IN (${arrayIdsToRemove.join(", ")});
+    `;
+    await dbConnectionProvider.executeQuery(deleteFilesQuery, [], t, false);
+
+    loggerGlobal.info("Archivos eliminados correctamente.");
+  } catch (error) {
+    loggerGlobal.error("Error en deleteFilesUnused:", error.message);
+    throw new Error(
+      "Error al eliminar los archivos y datos relacionados: " + error.message
+    );
+  }
+};
+
+const getFileByName = async (fileName) => {
+  try {
+    const query = `
+      SELECT 
+        f.id,
+        f.file_name AS "fileName",
+        c.company_code AS "companyCode",
+        sl.type
+      FROM file AS f
+      JOIN security_level AS sl ON f.security_level_id = sl.id
+      LEFT JOIN company AS c ON f.company_id = c.id
+      WHERE f.file_name ILIKE '%${fileName}%' AND f.is_backup = TRUE
+    `;
+
+    const result = await dbConnectionProvider.firstOrDefault(
+      query
+    );
+    return result;
+
+  } catch (error) {
+    loggerGlobal.error("Error al obtener el archivo que esta en el backup", {
+      error: error.message,
+      stack: error.stack,
+      fileName,
+    });
+    throw new Error(`Error al obtener el archivo que esta en el backup: ${error.message}`);
+  }
+}
+
+const copyFileParameters = async (sourceFileId, targetFileId, t) => {
+  try {
+    const query = `
+      INSERT INTO file_parameter_value (
+        file_id, 
+        route_parameter_id, 
+        parameter_value, 
+        creation_date, 
+        status
+      )
+      SELECT 
+        $1 as file_id,
+        route_parameter_id,
+        parameter_value,
+        NOW() as creation_date,
+        status
+      FROM file_parameter_value
+      WHERE file_id = $2 AND status = TRUE
+    `;
+
+    await dbConnectionProvider.executeQuery(query, [targetFileId, sourceFileId], t, false);
+    loggerGlobal.info(`Parámetros copiados de file_id ${sourceFileId} a ${targetFileId}`);
+
+  } catch (error) {
+    loggerGlobal.error(`Error copiando parámetros de archivo:`, error);
+    throw new Error(`No se pudieron copiar los parámetros del archivo: ${error.message}`);
+  }
+}
 
 const filesDAO = {
   getFileByMd5AndRouteRuleId,
   getFilesByMd5AndRouteRuleIds,
   insertFile,
-  changeStatusFile,
   insertFileVariant,
   existSomePrivateFile,
   getFileByCode,
   getFilesByCodes,
-  updateFile
+  updateFile,
+  getUnusedFiles,
+  deleteFilesUnused,
+  changeStatusFilesAsQueued,
+  getFilesExpired,
+  changeIsBackupFile,
+  getFileByName,
+  getFileByCodeForUpdate,
+  updateFileStatusAtomic,
+  copyFileParameters
 };
 
 export { filesDAO };

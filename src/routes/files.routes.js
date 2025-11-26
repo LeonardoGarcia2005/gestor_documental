@@ -10,14 +10,15 @@ import { uploadMultipleVariantsFiles, uploadMultipleDistinctFiles } from "../con
 import { createSingleFileSchema, createMultipleFilesSchema } from "../schemas/uploadSchemas.js";
 import { changeStatusFileSchema } from "../schemas/changeStatusFileShema.js";
 import { changeStatusFile } from "../controllers/files/changeStatusFileController.js";
-import { searchFilesSchema } from "../schemas/searchFilesSchema.js"
+import { searchFilesSchema, searchFilesSchemaResizing } from "../schemas/searchFilesSchema.js"
 import { validateFilesCompany } from "../middlewares/validateFilesMiddleware.js";
 import { validatePublicFiles } from "../middlewares/validatePublicFilesMiddleware.js";
 import { getPublicFiles } from "../controllers/files/getPublicFilesController.js";
 import { updateMultipleFiles } from "../controllers/files/updateMultipleFilesController.js";
 import { updateMultipleFilesSchema } from "../schemas/updateSchemas.js";
 import { authenticateContext } from "../middlewares/authenticateMiddleware.js";
-import { getPrivateFiles } from "../controllers/files/getPrivateFilesController.js";
+import { getPrivateFiles, viewPrivateFile } from "../controllers/files/getPrivateFilesController.js";
+import { getBackupFile } from "../controllers/files/getBackupFileController.js";
 
 const router = Router();
 
@@ -91,12 +92,23 @@ router.get(
   getPrivateFiles
 );
 
+router.get(
+  "/files/private/view/:code",
+  viewPrivateFile
+);
+
+router.get(
+  "/file/backup/:fileName",
+  getBackupFile
+);
+
 // Endpoint para obtener los archivos publicos haciendo el resizing
 /* router.post(
   "/files/public/search/resizing",
   validateSchema(searchFilesSchemaResizing),
   validatePublicFiles,
   getPublicFilesResizing
-); */
+);
+ */
 
 export default router;

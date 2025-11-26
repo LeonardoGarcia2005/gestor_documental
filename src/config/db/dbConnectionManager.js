@@ -1,15 +1,17 @@
 import 'dotenv/config';  // Esto carga las variables de entorno de .env
 import pgPromise from 'pg-promise';
+import { configurationProvider } from '../configurationManager.js';
 //import iconv from 'iconv-lite';
 //import jschardet from 'jschardet';
 
 // Configuración de la conexión a la base de datos
+// Usa configuración híbrida: JSON (development/production) + .env (secretos)
 const connection = {
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
+    host: configurationProvider.db.connection.host,
+    port: configurationProvider.db.connection.port,
+    database: configurationProvider.db.connection.database,
+    user: configurationProvider.db.connection.user,
+    password: configurationProvider.db.connection.password, // Viene de .env
     options: '-c client_encoding=UTF8'
 };
 
@@ -351,6 +353,23 @@ async function getAll(query, values = []) {
   }
 }
 
+// Ejecuta cualquier consulta arbitraria.
+async function executeQuery(query, values = [], tx = null, expectRows = false) {
+  try {
+    const executor = tx || db;
+    if (expectRows) {
+      return await executor.any(query, values); // Devuelve filas si las hay, [] si no
+    } else {
+      return await executor.none(query, values); // No espera filas, lanza error si devuelve algo
+    }
+  } catch (error) {
+    console.error("Error al ejecutar la consulta:", error);
+    console.error(`Query: ${query}, values: ${JSON.stringify(values)}`);
+    throw error;
+  }
+}
+
+
 // ======================== RESTO DE FUNCIONES (SIN CAMBIOS IMPORTANTES) ========================
 
 const CalcularPaginacion = async (query, registrosPorPagina, accionPaginacion, numeroPagina) => {
@@ -607,6 +626,7 @@ const dbConnectionProvider = {
   CalcularPaginacion,
   generarCondiciones,
   procesarColumnas,
+  executeQuery
 };
 
 export { dbConnectionProvider };
